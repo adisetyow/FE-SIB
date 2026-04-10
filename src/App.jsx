@@ -24,6 +24,7 @@ import SequenceDetailPage from "./pages/genetics/SequenceDetailPage";
 import SequenceFormPage from "./pages/genetics/SequenceFormPage";
 
 import AnalyzePage from "./pages/genetics/AnalyzePage";
+import AnalysisComparePage from "./pages/analysis/AnalysisComparePage";
 
 import PatientListPage from "./pages/patients/PatientListPage";
 import PatientDetailPage from "./pages/patients/PatientDetailPage";
@@ -46,6 +47,7 @@ import EthnicSequenceDetailPage from "./pages/ethnic-sequences/EthnicSequenceDet
 
 import LiteraturePage from "./pages/literature/LiteraturePage";
 import ActivityPage from "./pages/activities/ActivityPage";
+
 import AnalysisTaskPage from "./pages/analysis/AnalysisTaskPage";
 import SearchPage from "./pages/search/SearchPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -119,8 +121,11 @@ export default function App() {
         <Route path="sequences/:id" element={<SequenceDetailPage />} />
         <Route path="sequences/:id/edit" element={<SequenceFormPage />} />
 
-        {/* Analyze */}
+        {/* Analyze — text/FASTA mode */}
         <Route path="analyze" element={<AnalyzePage />} />
+
+        {/* Analysis Compare — async task */}
+        <Route path="analyze/compare" element={<AnalysisComparePage />} />
 
         {/* Patients */}
         <Route path="patients" element={<PatientListPage />} />

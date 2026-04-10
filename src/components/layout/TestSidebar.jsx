@@ -22,7 +22,6 @@ import {
   ChevronRight,
   X,
   Beaker,
-  GitCompare,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -37,12 +36,9 @@ function useNavItems() {
       exact: true,
     },
     {
-      group: "Analisis",
-      items: [
-        { label: t("nav.analyze"), path: "/analyze", icon: FlaskConical },
-        { label: "Compare", path: "/analyze/compare", icon: GitCompare },
-        { label: t("nav.analysis"), path: "/analysis/tasks", icon: ListTodo },
-      ],
+      label: t("nav.analyze"),
+      path: "/analyze",
+      icon: FlaskConical,
     },
     {
       group: "Data",
