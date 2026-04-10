@@ -1,0 +1,673 @@
+/* ============================================================
+   SIB Frontend — Global Styles
+   Glass Effect Design System
+   ============================================================ */
+
+/* ---------- Google Fonts ---------- */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   CSS VARIABLES — DESIGN TOKENS
+   ============================================================ */
+@layer base {
+    :root {
+        /* --- Glass effect (light mode) --- */
+        --glass-bg: rgba(255, 255, 255, 0.65);
+        --glass-bg-hover: rgba(255, 255, 255, 0.78);
+        --glass-border: rgba(255, 255, 255, 0.80);
+        --glass-border-inner: rgba(255, 255, 255, 0.50);
+        --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        --glass-shadow-md: 0 16px 48px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        --glass-blur: 12px;
+
+        /* --- Surface (light mode) --- */
+        --bg-page: #f0f4f8;
+        --bg-surface: #ffffff;
+        --bg-subtle: #f1f5f9;
+        --bg-muted: #e2e8f0;
+
+        /* --- Text (light mode) --- */
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --text-tertiary: #94a3b8;
+        --text-inverse: #ffffff;
+
+        /* --- Border (light mode) --- */
+        --border: rgba(15, 23, 42, 0.10);
+        --border-hover: rgba(15, 23, 42, 0.20);
+        --border-focus: rgba(0, 191, 191, 0.60);
+
+        /* --- Brand --- */
+        --primary: #00bfbf;
+        --primary-light: #4ddcdc;
+        --primary-dark: #007373;
+        --accent: #2d6cff;
+        --accent-light: #6090ff;
+
+        /* --- Sidebar --- */
+        --sidebar-bg: rgba(255, 255, 255, 0.75);
+        --sidebar-width: 260px;
+        --navbar-height: 60px;
+        --bottom-nav-h: 64px;
+
+        /* --- Scrollbar --- */
+        --scrollbar-track: rgba(0, 0, 0, 0.04);
+        --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+    }
+
+    .dark {
+        /* --- Glass effect (dark mode) --- */
+        --glass-bg: rgba(15, 23, 42, 0.55);
+        --glass-bg-hover: rgba(15, 23, 42, 0.70);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --glass-border-inner: rgba(255, 255, 255, 0.05);
+        --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        --glass-shadow-md: 0 16px 48px rgba(0, 0, 0, 0.50), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        --glass-blur: 16px;
+
+        /* --- Surface (dark mode) --- */
+        --bg-page: #080d18;
+        --bg-surface: #0f172a;
+        --bg-subtle: #131d2e;
+        --bg-muted: #1e293b;
+
+        /* --- Text (dark mode) --- */
+        --text-primary: #f1f5f9;
+        --text-secondary: #94a3b8;
+        --text-tertiary: #475569;
+        --text-inverse: #0f172a;
+
+        /* --- Border (dark mode) --- */
+        --border: rgba(255, 255, 255, 0.07);
+        --border-hover: rgba(255, 255, 255, 0.14);
+        --border-focus: rgba(0, 191, 191, 0.50);
+
+        /* --- Sidebar (dark) --- */
+        --sidebar-bg: rgba(8, 13, 24, 0.80);
+
+        /* --- Scrollbar (dark) --- */
+        --scrollbar-track: rgba(255, 255, 255, 0.03);
+        --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+    }
+}
+
+/* ============================================================
+   BASE RESET & TYPOGRAPHY
+   ============================================================ */
+@layer base {
+
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+
+    html {
+        scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+        tab-size: 4;
+    }
+
+    body {
+        font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+        font-size: 1rem;
+        line-height: 1.6;
+        color: var(--text-primary);
+        background-color: var(--bg-page);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /* Gradient mesh background */
+    body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+            radial-gradient(ellipse 70% 50% at 50% -10%, rgba(0, 191, 191, 0.10) 0%, transparent 65%),
+            radial-gradient(ellipse 55% 40% at 88% 45%, rgba(45, 108, 255, 0.08) 0%, transparent 60%),
+            radial-gradient(ellipse 45% 35% at 12% 85%, rgba(0, 153, 153, 0.07) 0%, transparent 60%);
+        transition: opacity 0.3s ease;
+    }
+
+    .dark body::before {
+        background-image:
+            radial-gradient(ellipse 70% 50% at 50% -10%, rgba(0, 191, 191, 0.14) 0%, transparent 65%),
+            radial-gradient(ellipse 55% 40% at 88% 45%, rgba(45, 108, 255, 0.12) 0%, transparent 60%),
+            radial-gradient(ellipse 45% 35% at 12% 85%, rgba(0, 153, 153, 0.10) 0%, transparent 60%);
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        font-family: 'Syne', ui-sans-serif, sans-serif;
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--text-primary);
+    }
+
+    p {
+        color: var(--text-secondary);
+    }
+
+    a {
+        color: var(--primary);
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+
+    a:hover {
+        color: var(--primary-light);
+    }
+
+    code,
+    kbd,
+    samp,
+    pre {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: 0.875em;
+    }
+
+    /* Focus ring accessible */
+    :focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: var(--scrollbar-track);
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 99px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--border-hover);
+    }
+
+    /* Selection */
+    ::selection {
+        background: rgba(0, 191, 191, 0.25);
+        color: var(--text-primary);
+    }
+
+    /* Image defaults */
+    img,
+    video {
+        max-width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    /* Input resets */
+    input,
+    button,
+    textarea,
+    select {
+        font: inherit;
+    }
+
+    button {
+        cursor: pointer;
+    }
+}
+
+/* ============================================================
+   COMPONENT UTILITIES
+   ============================================================ */
+@layer components {
+
+    /* ---------- Glass Cards ---------- */
+    .glass {
+        background: var(--glass-bg);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+        border: 1px solid var(--glass-border);
+        box-shadow: var(--glass-shadow);
+        transition: background 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+
+    .glass:hover {
+        background: var(--glass-bg-hover);
+        box-shadow: var(--glass-shadow-md);
+    }
+
+    .glass-md {
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--glass-border);
+        box-shadow: var(--glass-shadow-md);
+    }
+
+    .glass-subtle {
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid var(--glass-border-inner);
+    }
+
+    /* Dark mode adjustments (sudah otomatis via CSS var, ini untuk override spesifik) */
+    .dark .glass {
+        background: rgba(15, 23, 42, 0.55);
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .dark .glass:hover {
+        background: rgba(15, 23, 42, 0.70);
+    }
+
+    .dark .glass-subtle {
+        background: rgba(255, 255, 255, 0.03);
+        border-color: rgba(255, 255, 255, 0.05);
+    }
+
+    /* ---------- Gradient Text ---------- */
+    .gradient-text {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .gradient-text-warm {
+        background: linear-gradient(135deg, #00bfbf 0%, #4ddcdc 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    /* ---------- Sidebar ---------- */
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: var(--sidebar-width);
+        background: var(--sidebar-bg);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-right: 1px solid var(--border);
+        z-index: 40;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+            width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+    }
+
+    /* ---------- Page Wrapper ---------- */
+    .page-wrapper {
+        min-height: 100vh;
+        padding-left: var(--sidebar-width);
+        padding-top: var(--navbar-height);
+        transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Mobile: tanpa sidebar, dengan bottom nav */
+    @media (max-width: 1023px) {
+        .page-wrapper {
+            padding-left: 0;
+            padding-bottom: var(--bottom-nav-h);
+        }
+    }
+
+    .page-content {
+        padding: 1.5rem;
+        width: 100%;
+    }
+
+    @media (max-width: 640px) {
+        .page-content {
+            padding: 1rem;
+        }
+    }
+
+    /* ---------- Navbar ---------- */
+    .navbar {
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: var(--sidebar-width);
+        height: var(--navbar-height);
+        background: var(--glass-bg);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-bottom: 1px solid var(--border);
+        z-index: 50;
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @media (max-width: 1023px) {
+        .navbar {
+            left: 0;
+        }
+    }
+
+    /* ---------- Bottom Nav (Mobile) ---------- */
+    .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: var(--bottom-nav-h);
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-top: 1px solid var(--border);
+        z-index: 50;
+        display: none;
+    }
+
+    @media (max-width: 1023px) {
+        .bottom-nav {
+            display: flex;
+        }
+    }
+
+    /* ---------- Buttons ---------- */
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none;
+    }
+
+    .btn-primary {
+        @apply btn bg-primary-500 text-white hover:bg-primary-600 active:scale-[0.98];
+        box-shadow: 0 0 0 0 rgba(0, 191, 191, 0);
+        transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+    }
+
+    .btn-primary:hover {
+        box-shadow: 0 4px 16px rgba(0, 191, 191, 0.35);
+    }
+
+    .btn-accent {
+        @apply btn bg-accent-500 text-white hover:bg-accent-600 active:scale-[0.98];
+    }
+
+    .btn-accent:hover {
+        box-shadow: 0 4px 16px rgba(45, 108, 255, 0.35);
+    }
+
+    .btn-glass {
+        @apply btn glass text-[--text-primary] hover:text-[--text-primary] active:scale-[0.98];
+    }
+
+    .btn-ghost {
+        @apply btn bg-transparent text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary] active:scale-[0.98];
+    }
+
+    .btn-danger {
+        @apply btn bg-danger-500 text-white hover:bg-danger-600 active:scale-[0.98];
+    }
+
+    .btn-sm {
+        @apply px-3 py-1.5 text-xs;
+    }
+
+    .btn-lg {
+        @apply px-6 py-3.5 text-base;
+    }
+
+    /* ---------- Input Fields ---------- */
+    .input {
+        @apply w-full px-4 py-2.5 text-sm rounded-lg border transition-all duration-200;
+        background: var(--glass-bg);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-color: var(--border);
+        color: var(--text-primary);
+        outline: none;
+    }
+
+    .input::placeholder {
+        color: var(--text-tertiary);
+    }
+
+    .input:focus {
+        border-color: var(--border-focus);
+        box-shadow: 0 0 0 3px rgba(0, 191, 191, 0.12);
+        background: var(--glass-bg-hover);
+    }
+
+    .input:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .input-error {
+        border-color: rgb(239, 68, 68) !important;
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12) !important;
+    }
+
+    /* ---------- Card ---------- */
+    .card {
+        @apply glass rounded-xl p-5;
+    }
+
+    .card-hover {
+        @apply card cursor-pointer hover:-translate-y-0.5;
+    }
+
+    /* ---------- Badge ---------- */
+    .badge {
+        @apply inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full;
+    }
+
+    .badge-primary {
+        @apply badge bg-primary-500/15 text-primary-600 dark:text-primary-400;
+    }
+
+    .badge-accent {
+        @apply badge bg-accent-500/15 text-accent-600 dark:text-accent-400;
+    }
+
+    .badge-success {
+        @apply badge bg-success-500/15 text-success-600 dark:text-success-400;
+    }
+
+    .badge-warning {
+        @apply badge bg-warning-500/15 text-warning-600 dark:text-warning-400;
+    }
+
+    .badge-danger {
+        @apply badge bg-danger-500/15 text-danger-600 dark:text-danger-400;
+    }
+
+    .badge-muted {
+        @apply badge bg-surface-200/60 text-surface-600 dark:bg-surface-700/60 dark:text-surface-400;
+    }
+
+    /* ---------- Table ---------- */
+    .table-wrapper {
+        @apply w-full overflow-x-auto rounded-xl;
+        border: 1px solid var(--border);
+    }
+
+    .table {
+        @apply w-full text-sm;
+        border-collapse: collapse;
+    }
+
+    .table th {
+        @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider;
+        color: var(--text-tertiary);
+        background: rgba(0, 0, 0, 0.02);
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+    }
+
+    .dark .table th {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .table td {
+        @apply px-4 py-3.5;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .table tbody tr {
+        transition: background 0.15s ease;
+    }
+
+    .table tbody tr:hover {
+        background: rgba(0, 191, 191, 0.04);
+    }
+
+    /* ---------- Skeleton Loading ---------- */
+    .skeleton {
+        @apply rounded-lg animate-pulse;
+        background: linear-gradient(90deg,
+                var(--bg-muted) 25%,
+                var(--bg-subtle) 50%,
+                var(--bg-muted) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.8s infinite linear;
+    }
+
+    /* ---------- Divider ---------- */
+    .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 1rem 0;
+    }
+
+    /* ---------- Stat Card ---------- */
+    .stat-card {
+        @apply glass rounded-xl p-5 flex flex-col gap-2;
+    }
+
+    .stat-value {
+        @apply font-display text-3xl font-bold;
+        color: var(--text-primary);
+    }
+
+    .stat-label {
+        @apply text-sm;
+        color: var(--text-secondary);
+    }
+
+    /* ---------- Page Header ---------- */
+    .page-header {
+        @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6;
+    }
+
+    .page-title {
+        @apply font-display text-2xl font-bold;
+        color: var(--text-primary);
+    }
+
+    .page-subtitle {
+        @apply text-sm mt-0.5;
+        color: var(--text-secondary);
+    }
+
+    /* ---------- Sidebar Nav Item ---------- */
+    .nav-item {
+        @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer w-full;
+        color: var(--text-secondary);
+    }
+
+    .nav-item:hover {
+        background: rgba(0, 191, 191, 0.08);
+        color: var(--text-primary);
+    }
+
+    .nav-item.active {
+        background: rgba(0, 191, 191, 0.12);
+        color: var(--primary);
+        font-weight: 600;
+    }
+
+    .dark .nav-item.active {
+        background: rgba(0, 191, 191, 0.12);
+    }
+
+    /* ---------- Misc ---------- */
+    .section-title {
+        @apply font-display text-lg font-bold mb-4;
+        color: var(--text-primary);
+    }
+
+    .empty-state {
+        @apply flex flex-col items-center justify-center py-16 text-center gap-3;
+        color: var(--text-tertiary);
+    }
+
+    /* Prevent layout shift */
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+}
+
+/* ============================================================
+   UTILITY OVERRIDES
+   ============================================================ */
+@layer utilities {
+    .text-primary-color {
+        color: var(--text-primary);
+    }
+
+    .text-secondary-color {
+        color: var(--text-secondary);
+    }
+
+    .text-tertiary-color {
+        color: var(--text-tertiary);
+    }
+
+    .bg-page {
+        background-color: var(--bg-page);
+    }
+
+    .bg-surface-color {
+        background-color: var(--bg-surface);
+    }
+
+    .bg-subtle {
+        background-color: var(--bg-subtle);
+    }
+
+    .border-default {
+        border-color: var(--border);
+    }
+
+    .transition-theme {
+        transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    }
+
+    /* Responsive hide */
+    .desktop-only {
+        @apply hidden lg:block;
+    }
+
+    .mobile-only {
+        @apply block lg:hidden;
+    }
+}
