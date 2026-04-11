@@ -1,18 +1,13 @@
 /**
  * pages/analysis/AnalysisTaskPage.jsx
- *
- * Halaman riwayat semua task analisis milik user:
- * - List task dengan filter status (PENDING/PROCESSING/COMPLETED/FAILED)
- * - Klik task → detail (inline expand, bukan halaman baru)
- * - Task yang masih PENDING/PROCESSING: polling otomatis
- * - Tombol "Analisis Baru" → ke halaman compare
+ * Riwayat task analisis — update dengan export PDF per task + Excel semua tasks
  */
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
+import toast from "react-hot-toast";
 import {
   ListTodo,
   FlaskConical,
@@ -22,20 +17,21 @@ import {
   Clock,
   ChevronDown,
   Microscope,
-  AlignJustify,
-  Dna,
-  RefreshCw,
   BarChart2,
   ArrowRight,
   Filter,
   Plus,
+  RefreshCw,
+  FileText,
 } from "lucide-react";
 import clsx from "clsx";
 
 import { analysisApi } from "../../api/analysisApi";
 import { usePolling } from "../../hooks/usePolling";
+import { exportAnalysisToPDF, exportDataToPDF } from "../../utils/exportPDF";
+import { exportAnalisysTasksToExcel } from "../../utils/exportExcel";
+import ExportButton from "../../components/export/ExportButton";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const STATUS_CFG = {
   PENDING: {
     label: "Menunggu",
@@ -58,6 +54,14 @@ const STATUS_CFG = {
   FAILED: { label: "Gagal", color: "badge-danger", icon: XCircle, spin: false },
 };
 
+const BASE_COLOR = {
+  A: "text-blue-500",
+  T: "text-green-500",
+  G: "text-red-500",
+  C: "text-yellow-500",
+  U: "text-purple-500",
+};
+
 function StatusBadge({ status }) {
   const cfg = STATUS_CFG[status] || STATUS_CFG.PENDING;
   const Icon = cfg.icon;
@@ -69,7 +73,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function formatDate(iso) {
+function fmtDate(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("id-ID", {
     day: "2-digit",
@@ -80,26 +84,27 @@ function formatDate(iso) {
   });
 }
 
-// ─── Row detail expandable (dengan polling jika masih aktif) ──────────────────
-function TaskRow({ task: initialTask, index }) {
+function TaskRow({ task: init, index }) {
   const [open, setOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
-  // Polling otomatis untuk task yang belum selesai
-  const { task } = usePolling(initialTask.id, {
+  const { task } = usePolling(init.id, {
     interval: 2500,
-    enabled: ["PENDING", "PROCESSING"].includes(initialTask.status),
+    enabled: ["PENDING", "PROCESSING"].includes(init.status),
   });
+  const t = task || init;
 
-  // Gunakan data polling jika ada, fallback ke initial
-  const t = task || initialTask;
-
-  const BASE_COLOR = {
-    A: "text-blue-500",
-    T: "text-green-500",
-    G: "text-red-500",
-    C: "text-yellow-500",
-    U: "text-purple-500",
-  };
+  async function handleExportPDF() {
+    setPdfLoading(true);
+    try {
+      await exportAnalysisToPDF(t);
+      toast.success("PDF berhasil digenerate");
+    } catch {
+      toast.error("Gagal membuat PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
 
   return (
     <motion.div
@@ -108,73 +113,90 @@ function TaskRow({ task: initialTask, index }) {
       transition={{ delay: index * 0.04 }}
       className="border border-[--border] rounded-xl overflow-hidden"
     >
-      {/* Header row */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 p-4 text-left hover:bg-[--bg-subtle] transition-colors"
-      >
-        {/* Icon */}
-        <div
-          className={clsx(
-            "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0",
-            t.status === "COMPLETED"
-              ? "bg-success-500/10"
-              : t.status === "FAILED"
-                ? "bg-danger-500/10"
-                : "bg-accent-500/10",
-          )}
+      <div className="flex items-center gap-3 p-4">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
         >
-          {t.status === "COMPLETED" && (
-            <CheckCircle2 size={16} className="text-success-500" />
-          )}
-          {t.status === "FAILED" && (
-            <XCircle size={16} className="text-danger-500" />
-          )}
-          {["PENDING", "PROCESSING"].includes(t.status) && (
-            <Loader2 size={16} className="text-accent-500 animate-spin" />
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-[--text-primary]">
-              Task Analisis
-            </span>
-            <StatusBadge status={t.status} />
-            {t.status === "COMPLETED" && t.total_mutations !== null && (
-              <span
-                className={clsx(
-                  "badge text-[10px]",
-                  (t.total_mutations ?? 0) > 0
-                    ? "badge-danger"
-                    : "badge-success",
-                )}
-              >
-                {t.total_mutations ?? 0} mutasi
-              </span>
+          <div
+            className={clsx(
+              "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0",
+              t.status === "COMPLETED"
+                ? "bg-success-500/10"
+                : t.status === "FAILED"
+                  ? "bg-danger-500/10"
+                  : "bg-accent-500/10",
+            )}
+          >
+            {t.status === "COMPLETED" && (
+              <CheckCircle2 size={16} className="text-success-500" />
+            )}
+            {t.status === "FAILED" && (
+              <XCircle size={16} className="text-danger-500" />
+            )}
+            {["PENDING", "PROCESSING"].includes(t.status) && (
+              <Loader2 size={16} className="text-accent-500 animate-spin" />
             )}
           </div>
-          <div className="flex items-center gap-3 mt-0.5">
-            <span className="text-xs text-[--text-tertiary] font-mono">
-              ID: {t.id?.slice(0, 12)}...
-            </span>
-            <span className="text-xs text-[--text-tertiary]">
-              {formatDate(t.created_at)}
-            </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-[--text-primary]">
+                Task Analisis
+              </span>
+              <StatusBadge status={t.status} />
+              {t.status === "COMPLETED" && t.total_mutations !== null && (
+                <span
+                  className={clsx(
+                    "badge text-[10px]",
+                    (t.total_mutations ?? 0) > 0
+                      ? "badge-danger"
+                      : "badge-success",
+                  )}
+                >
+                  {t.total_mutations ?? 0} mutasi
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-0.5">
+              <span className="text-xs text-[--text-tertiary] font-mono">
+                ID: {t.id?.slice(0, 12)}...
+              </span>
+              <span className="text-xs text-[--text-tertiary]">
+                {fmtDate(t.created_at)}
+              </span>
+            </div>
           </div>
-        </div>
-
-        <ChevronDown
-          size={16}
-          className={clsx(
-            "text-[--text-tertiary] flex-shrink-0 transition-transform duration-200",
-            open && "rotate-180",
+        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {t.status === "COMPLETED" && (
+            <button
+              onClick={handleExportPDF}
+              disabled={pdfLoading}
+              title="Export PDF"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:text-danger-500 hover:bg-danger-500/10 transition-colors"
+            >
+              {pdfLoading ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <FileText size={13} />
+              )}
+            </button>
           )}
-        />
-      </button>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:bg-[--bg-muted] transition-colors"
+          >
+            <ChevronDown
+              size={16}
+              className={clsx(
+                "transition-transform duration-200",
+                open && "rotate-180",
+              )}
+            />
+          </button>
+        </div>
+      </div>
 
-      {/* Detail expandable */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -184,7 +206,6 @@ function TaskRow({ task: initialTask, index }) {
             className="overflow-hidden"
           >
             <div className="p-4 border-t border-[--border] space-y-4 bg-[--bg-subtle]/50">
-              {/* Info grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
                   {
@@ -205,8 +226,8 @@ function TaskRow({ task: initialTask, index }) {
                       : "—",
                   },
                   { label: "Total Mutasi", value: t.total_mutations ?? "—" },
-                  { label: "Dibuat", value: formatDate(t.created_at) },
-                  { label: "Diperbarui", value: formatDate(t.updated_at) },
+                  { label: "Dibuat", value: fmtDate(t.created_at) },
+                  { label: "Diperbarui", value: fmtDate(t.updated_at) },
                 ].map((item, i) => (
                   <div
                     key={i}
@@ -227,11 +248,11 @@ function TaskRow({ task: initialTask, index }) {
                 ))}
               </div>
 
-              {/* Alignment summary */}
               {t.alignment_summary && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-[--text-tertiary] mb-2 flex items-center gap-1.5">
-                    <BarChart2 size={12} /> Ringkasan Alignment
+                    <BarChart2 size={12} />
+                    Ringkasan Alignment
                   </p>
                   <div className="p-3 rounded-lg bg-[--bg-surface] border border-[--border]">
                     <p className="text-xs text-[--text-secondary] leading-relaxed">
@@ -241,13 +262,12 @@ function TaskRow({ task: initialTask, index }) {
                 </div>
               )}
 
-              {/* Mutasi */}
               {t.status === "COMPLETED" && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-[--text-tertiary] mb-2 flex items-center gap-1.5">
-                    <Microscope size={12} /> Mutasi ({t.mutations?.length ?? 0})
+                    <Microscope size={12} />
+                    Mutasi ({t.mutations?.length ?? 0})
                   </p>
-
                   {!t.mutations?.length ? (
                     <div className="flex items-center gap-2 text-sm text-success-500 p-3 rounded-lg bg-success-500/8">
                       <CheckCircle2 size={15} />
@@ -266,7 +286,7 @@ function TaskRow({ task: initialTask, index }) {
                         </thead>
                         <tbody>
                           {t.mutations.map((mut, i) => {
-                            const mutType =
+                            const mt =
                               mut.reference_base === "-"
                                 ? "Insertion"
                                 : mut.sample_base === "-"
@@ -308,14 +328,12 @@ function TaskRow({ task: initialTask, index }) {
                                   <span
                                     className={clsx(
                                       "badge text-[10px]",
-                                      mutType === "Substitusi" &&
-                                        "badge-danger",
-                                      mutType === "Insertion" &&
-                                        "badge-warning",
-                                      mutType === "Deletion" && "badge-accent",
+                                      mt === "Substitusi" && "badge-danger",
+                                      mt === "Insertion" && "badge-warning",
+                                      mt === "Deletion" && "badge-accent",
                                     )}
                                   >
-                                    {mutType}
+                                    {mt}
                                   </span>
                                 </td>
                               </tr>
@@ -327,8 +345,6 @@ function TaskRow({ task: initialTask, index }) {
                   )}
                 </div>
               )}
-
-              {/* Status message untuk FAILED */}
               {t.status === "FAILED" && t.status_message && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-danger-500/8 border border-danger-500/15">
                   <XCircle
@@ -338,8 +354,6 @@ function TaskRow({ task: initialTask, index }) {
                   <p className="text-xs text-danger-500">{t.status_message}</p>
                 </div>
               )}
-
-              {/* Polling indicator */}
               {["PENDING", "PROCESSING"].includes(t.status) && (
                 <div className="flex items-center gap-2 text-xs text-[--text-tertiary]">
                   <Loader2 size={12} className="animate-spin" />
@@ -354,12 +368,9 @@ function TaskRow({ task: initialTask, index }) {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AnalysisTaskPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const qc = useQueryClient();
-
   const [filterStatus, setFilterStatus] = useState("");
 
   const {
@@ -373,18 +384,14 @@ export default function AnalysisTaskPage() {
         limit: 200,
         ...(filterStatus && { status: filterStatus }),
       }),
-    refetchInterval: (query) => {
-      // Polling list jika ada task yang masih aktif
-      const data = query.state.data;
-      if (!data) return false;
-      const hasActive = data.some((t) =>
-        ["PENDING", "PROCESSING"].includes(t.status),
-      );
-      return hasActive ? 5000 : false;
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      return d?.some((t) => ["PENDING", "PROCESSING"].includes(t.status))
+        ? 5000
+        : false;
     },
   });
 
-  // Stats
   const stats = {
     total: tasks.length,
     completed: tasks.filter((t) => t.status === "COMPLETED").length,
@@ -394,7 +401,7 @@ export default function AnalysisTaskPage() {
     failed: tasks.filter((t) => t.status === "FAILED").length,
   };
 
-  const STATUS_FILTERS = [
+  const FILTERS = [
     { value: "", label: "Semua" },
     { value: "COMPLETED", label: "Selesai" },
     { value: "PROCESSING", label: "Proses" },
@@ -404,7 +411,6 @@ export default function AnalysisTaskPage() {
 
   return (
     <div className="space-y-5 max-w-4xl">
-      {/* ── Header ── */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -419,16 +425,59 @@ export default function AnalysisTaskPage() {
             Riwayat semua task analisis perbandingan sekuens
           </p>
         </div>
-        <button
-          onClick={() => navigate("/analyze")}
-          className="btn btn-primary btn-sm"
-        >
-          <Plus size={15} />
-          Analisis Baru
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            onExportExcel={() => exportAnalisysTasksToExcel(tasks)}
+            onExportPDF={
+              stats.completed > 0
+                ? async () => {
+                    await exportDataToPDF({
+                      title: "Riwayat Task Analisis",
+                      subtitle: `${stats.completed} task selesai`,
+                      columns: [
+                        {
+                          key: "id",
+                          header: "Task ID",
+                          flex: 1.5,
+                          format: (v) => v?.slice(0, 14) + "...",
+                        },
+                        { key: "status", header: "Status", flex: 0.8 },
+                        { key: "total_mutations", header: "Mutasi", flex: 0.6 },
+                        {
+                          key: "sample_length",
+                          header: "Pjg Sampel",
+                          flex: 0.8,
+                          format: (v) => (v ? `${v.toLocaleString()} bp` : "—"),
+                        },
+                        {
+                          key: "created_at",
+                          header: "Tanggal",
+                          flex: 1,
+                          format: (v) =>
+                            v ? new Date(v).toLocaleDateString("id-ID") : "—",
+                        },
+                      ],
+                      rows: tasks.filter((t) => t.status === "COMPLETED"),
+                      filename: "analysis_tasks",
+                      summary: {
+                        "Total Task": stats.total,
+                        Selesai: stats.completed,
+                        Gagal: stats.failed,
+                      },
+                    });
+                  }
+                : undefined
+            }
+          />
+          <button
+            onClick={() => navigate("/analyze/compare")}
+            className="btn btn-primary btn-sm"
+          >
+            <Plus size={15} /> Analisis Baru
+          </button>
+        </div>
       </motion.div>
 
-      {/* ── Stat Cards ── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -462,7 +511,6 @@ export default function AnalysisTaskPage() {
         ))}
       </motion.div>
 
-      {/* ── Filter + Refresh ── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -472,7 +520,7 @@ export default function AnalysisTaskPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Filter size={14} className="text-[--text-tertiary]" />
           <div className="flex flex-wrap gap-2">
-            {STATUS_FILTERS.map((f) => (
+            {FILTERS.map((f) => (
               <button
                 key={f.value}
                 onClick={() => setFilterStatus(f.value)}
@@ -486,20 +534,13 @@ export default function AnalysisTaskPage() {
                 {f.label}
                 {f.value && (
                   <span className="ml-1.5 text-[10px] opacity-70">
-                    (
-                    {
-                      tasks.filter((t) => !f.value || t.status === f.value)
-                        .length
-                    }
-                    )
+                    ({tasks.filter((t) => t.status === f.value).length})
                   </span>
                 )}
               </button>
             ))}
           </div>
-
           <div className="flex-1" />
-
           <button
             onClick={() => refetch()}
             className="btn btn-ghost btn-sm gap-1.5"
@@ -510,7 +551,6 @@ export default function AnalysisTaskPage() {
         </div>
       </motion.div>
 
-      {/* ── Task List ── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -530,11 +570,10 @@ export default function AnalysisTaskPage() {
                 : "Belum ada task analisis"}
             </p>
             <button
-              onClick={() => navigate("/analyze")}
+              onClick={() => navigate("/analyze/compare")}
               className="btn btn-primary btn-sm mt-2"
             >
-              <FlaskConical size={14} />
-              Mulai Analisis Pertama
+              <FlaskConical size={14} /> Mulai Analisis Pertama
             </button>
           </div>
         ) : (
