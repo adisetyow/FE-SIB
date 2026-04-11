@@ -1,3 +1,11 @@
+/**
+ * api/diseasesApi.js
+ * Catatan dari API:
+ * - GET list   → array DiseaseListResponse (ada ethnicity_count, mutation_count)
+ * - GET detail → DiseaseDetailResponse (ada at_risk_ethnicities[], mutations[])
+ * - POST/PUT   → bisa sertakan ethnicity_ids[] untuk relasi etnis
+ * - DELETE     → gagal jika masih ada mutasi terhubung
+ */
 import apiClient from "../utils/apiClient";
 
 export const diseasesApi = {

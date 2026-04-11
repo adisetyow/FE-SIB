@@ -1,119 +1,126 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom"; // Ganti Link jadi useNavigate untuk consistency
+/**
+ * pages/patients/PatientDetailPage.jsx
+ */
+import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
-import toast from "react-hot-toast";
 import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 import {
   ArrowLeft,
-  Loader2,
-  Pencil, // Diganti dari Edit agar seragam dengan Sequences
-  Trash2, // Tambahan tombol hapus
-  Activity,
+  Users,
+  Pencil,
+  Trash2,
+  Dna,
   MapPin,
-  User,
+  Calendar,
   Hash,
-  CalendarDays,
+  Globe,
 } from "lucide-react";
+import clsx from "clsx";
+
 import { patientsApi } from "../../api/patientsApi";
-import ConfirmDialog from "../../components/ui/ConfirmDialog"; // Gunakan ini untuk hapus
+import { geneticsApi } from "../../api/geneticsApi";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
+
+const GENDER_LABEL = { MALE: "Laki-laki", FEMALE: "Perempuan" };
+const GENDER_COLOR = { MALE: "badge-accent", FEMALE: "badge-primary" };
+
+function InfoRow({ icon: Icon, label, value, mono }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-3 py-3 border-b border-[--border] last:border-0">
+      <div className="w-8 h-8 rounded-lg bg-[--bg-muted] flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Icon size={15} className="text-[--text-tertiary]" />
+      </div>
+      <div className="flex-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[--text-tertiary]">
+          {label}
+        </p>
+        <p
+          className={clsx(
+            "text-sm text-[--text-primary] mt-0.5",
+            mono && "font-mono",
+          )}
+        >
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function PatientDetailPage() {
   const { id } = useParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const [patient, setPatient] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false); // State untuk modal hapus
+  const {
+    data: patient,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["patient", id],
+    queryFn: () => patientsApi.getPatient(id),
+  });
 
-  useEffect(() => {
-    const fetchPatient = async () => {
-      try {
-        const res = await patientsApi.getPatient(id);
-        setPatient(res);
-      } catch (err) {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPatient();
-  }, [id]);
+  const { data: sequences = [] } = useQuery({
+    queryKey: ["sequences-patient", id],
+    queryFn: () => geneticsApi.listSequences({ patient_id: id, limit: 100 }),
+    enabled: !!id,
+  });
 
-  // Mutation Hapus
-  const deleteMutation = useMutation({
+  const deleteMut = useMutation({
     mutationFn: () => patientsApi.deletePatient(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["patients"] });
-      toast.success(t("patients.deleteSuccess", "Pasien berhasil dihapus"));
+      toast.success(t("patients.deleteSuccess"));
       navigate("/patients");
     },
-    onError: (err) => {
-      toast.error(
-        err?.response?.data?.message ||
-          "Gagal menghapus pasien. Data mungkin terhubung dengan mutasi.",
-      );
-    },
+    onError: (e) => toast.error(e.message || "Gagal menghapus"),
   });
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64 w-full">
-        <Loader2 className="animate-spin text-primary-500" size={32} />
+      <div className="space-y-5 max-w-3xl animate-pulse">
+        {[1, 2].map((i) => (
+          <div key={i} className="skeleton h-48 rounded-2xl" />
+        ))}
       </div>
     );
   }
-
   if (error || !patient) {
     return (
-      <div className="empty-state py-12 glass rounded-2xl">
-        <Activity size={40} className="text-rose-400 mb-2" />
-        <h2 className="text-lg font-bold text-[--text-primary]">
-          Data Tidak Ditemukan
-        </h2>
-        <p className="text-[--text-secondary]">
-          Pasien yang Anda cari tidak ada atau terjadi kesalahan.
-        </p>
-        <button
-          onClick={() => navigate("/patients")}
-          className="btn btn-primary mt-4"
-        >
-          Kembali ke Daftar
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <Users size={40} className="text-[--text-tertiary]" />
+        <p className="text-[--text-secondary]">Pasien tidak ditemukan.</p>
+        <button onClick={() => navigate("/patients")} className="btn btn-ghost">
+          <ArrowLeft size={15} /> Kembali
         </button>
       </div>
     );
   }
 
-  const calculateAge = (birthDate) => {
-    if (!birthDate) return "-";
-    const today = new Date();
-    const birth = new Date(birthDate);
-    let years = today.getFullYear() - birth.getFullYear();
-    let months = today.getMonth() - birth.getMonth();
-    let days = today.getDate() - birth.getDate();
+  function calcAge(dob) {
+    if (!dob) return null;
+    return Math.floor(
+      (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25),
+    );
+  }
 
-    if (days < 0) {
-      months--;
-      const prevMonth = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        0,
-      ).getDate();
-      days += prevMonth;
-    }
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
-    return `${years} tahun ${months} bulan ${days} hari`;
-  };
+  const addressParts = [
+    patient.address_street,
+    patient.address_district,
+    patient.address_city,
+    patient.address_province,
+  ].filter(Boolean);
 
   return (
-    <div className="w-full space-y-6">
-      {/* ── DIPERBARUI: Navigation Top & Actions (Seragam dengan Sequences) ── */}
+    <div className="space-y-5 max-w-3xl">
+      {/* Actions */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -126,15 +133,15 @@ export default function PatientDetailPage() {
           <ArrowLeft
             size={16}
             className="group-hover:-translate-x-0.5 transition-transform"
-          />
-          {t("common.back", "Kembali ke Daftar Pasien")}
+          />{" "}
+          Kembali
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex gap-2">
           <button
             onClick={() => navigate(`/patients/${id}/edit`)}
             className="btn btn-glass btn-sm"
           >
-            <Pencil size={14} /> {t("common.edit", "Ubah Data")}
+            <Pencil size={14} /> Edit
           </button>
           <button
             onClick={() => setDeleteOpen(true)}
@@ -145,140 +152,176 @@ export default function PatientDetailPage() {
         </div>
       </motion.div>
 
-      {/* ── Profile Header Banner (TIDAK DIUBAH, SESUAI PERMINTAAN) ── */}
+      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="glass rounded-2xl overflow-hidden border border-[--border]"
+        className="glass rounded-2xl p-6"
       >
-        <div className="h-24 sm:h-32 bg-gradient-to-r from-primary-500/20 via-accent-500/20 to-emerald-500/20 relative">
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-30 mix-blend-overlay"></div>
-        </div>
-
-        <div className="px-6 pb-6 sm:px-8 sm:pb-8 relative">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-5 -mt-12 sm:-mt-16 mb-6">
-            {/* Avatar */}
-            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-white dark:bg-slate-800 p-2 shadow-lg ring-1 ring-[--border]">
-              <div className="w-full h-full rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center">
-                <User
-                  size={48}
-                  className="text-slate-400 dark:text-slate-500"
-                />
-              </div>
-            </div>
-
-            {/* Main Info */}
-            <div className="flex-1 pb-1">
-              <h1 className="text-2xl sm:text-3xl font-display font-bold text-[--text-primary] leading-tight">
+        <div className="flex items-start gap-4">
+          <div
+            className={clsx(
+              "w-16 h-16 rounded-2xl flex items-center justify-center text-white text-2xl font-display font-bold flex-shrink-0",
+              patient.gender === "FEMALE"
+                ? "bg-gradient-to-br from-pink-400 to-primary-500"
+                : "bg-gradient-to-br from-accent-400 to-accent-600",
+            )}
+          >
+            {patient.full_name?.charAt(0)?.toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h1 className="font-display text-2xl font-bold text-[--text-primary]">
                 {patient.full_name}
               </h1>
-
-              <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-[--text-secondary]">
-                {/* NIK */}
-                <div className="flex items-center gap-1.5">
-                  <Hash size={14} className="text-[--text-tertiary]" />
-                  <span className="text-[--text-tertiary]">NIK</span>
-                  <span className="font-medium">{patient.nik}</span>
-                </div>
-                <span className="text-[--border]">•</span>
-                {/* Tanggal lahir */}
-                <div className="flex items-center gap-1.5">
-                  <CalendarDays size={14} className="text-[--text-tertiary]" />
-                  <span>
-                    {patient.date_of_birth
-                      ? new Date(patient.date_of_birth).toLocaleDateString(
-                          "id-ID",
-                          { day: "numeric", month: "long", year: "numeric" },
-                        )
-                      : "-"}
-                  </span>
-                </div>
-                <span className="text-[--border]">•</span>
-                {/* Umur */}
-                <div className="flex items-center gap-1.5">
-                  <Activity size={14} className="text-[--text-tertiary]" />
-                  <span className="font-medium">
-                    {calculateAge(patient.date_of_birth)}
-                  </span>
-                </div>
-              </div>
+              {patient.gender && (
+                <span className={clsx("badge", GENDER_COLOR[patient.gender])}>
+                  {GENDER_LABEL[patient.gender]}
+                </span>
+              )}
+              {patient.ethnicity_name && (
+                <span className="badge badge-muted">
+                  {patient.ethnicity_name}
+                </span>
+              )}
             </div>
-
-            {/* Status Badges */}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <span
-                className={`badge px-3 py-1 text-sm justify-center ${patient.gender === "MALE" ? "bg-accent-500/10 text-accent-600" : "bg-primary-500/10 text-primary-600"}`}
-              >
-                {patient.gender === "MALE"
-                  ? t("patients.male", "Laki-laki")
-                  : patient.gender === "FEMALE"
-                    ? t("patients.female", "Perempuan")
-                    : "Gender -"}
-              </span>
-              <span className="badge px-3 py-1 text-sm bg-[--bg-muted] text-[--text-secondary] justify-center">
-                {patient.ethnicity_name || "Etnis belum diatur"}
-              </span>
-            </div>
-          </div>
-
-          <hr className="border-[--border] mb-6" />
-
-          {/* Demographics Detail (TIDAK DIUBAH) */}
-          <div className="grid grid-cols-1 lg:grid-cols-1 gap-8">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-xs font-bold text-[--text-tertiary] uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <MapPin size={14} /> Demografi & Lokasi
-                </h3>
-                <div className="bg-[--bg-subtle] rounded-xl p-4 border border-[--border] space-y-3">
-                  <div className="grid grid-cols-3 text-sm">
-                    <span className="text-[--text-secondary]">
-                      Tempat Kelahiran
-                    </span>
-                    <span className="col-span-2 font-medium text-[--text-primary]">
-                      {patient.place_of_birth || "-"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 text-sm">
-                    <span className="text-[--text-secondary]">Jalan</span>
-                    <span className="col-span-2 font-medium text-[--text-primary]">
-                      {patient.address_street || "-"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 text-sm">
-                    <span className="text-[--text-secondary]">Kecamatan</span>
-                    <span className="col-span-2 font-medium text-[--text-primary]">
-                      {patient.address_district || "-"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 text-sm">
-                    <span className="text-[--text-secondary]">Kota / Kab.</span>
-                    <span className="col-span-2 font-medium text-[--text-primary]">
-                      {patient.address_city || "-"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 text-sm">
-                    <span className="text-[--text-secondary]">Provinsi</span>
-                    <span className="col-span-2 font-medium text-[--text-primary]">
-                      {patient.address_province || "-"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <p className="text-sm font-mono text-[--text-tertiary]">
+              NIK: {patient.nik}
+            </p>
+            {patient.date_of_birth && (
+              <p className="text-sm text-[--text-secondary] mt-0.5">
+                {calcAge(patient.date_of_birth)} tahun ·{" "}
+                {new Date(patient.date_of_birth).toLocaleDateString("id-ID", {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+            )}
           </div>
         </div>
       </motion.div>
 
-      {/* ── Dialog Konfirmasi Hapus ── */}
+      {/* Info grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="glass rounded-2xl p-5"
+        >
+          <h3 className="section-title text-sm mb-3">Data Kependudukan</h3>
+          <InfoRow icon={Hash} label="NIK" value={patient.nik} mono />
+          <InfoRow
+            icon={Calendar}
+            label="Tempat Lahir"
+            value={patient.place_of_birth}
+          />
+          <InfoRow
+            icon={Calendar}
+            label="Tanggal Lahir"
+            value={
+              patient.date_of_birth
+                ? new Date(patient.date_of_birth).toLocaleDateString("id-ID", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })
+                : null
+            }
+          />
+          <InfoRow icon={Globe} label="Etnis" value={patient.ethnicity_name} />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="glass rounded-2xl p-5"
+        >
+          <h3 className="section-title text-sm mb-3">Alamat</h3>
+          {addressParts.length > 0 ? (
+            <InfoRow
+              icon={MapPin}
+              label="Alamat Lengkap"
+              value={addressParts.join(", ")}
+            />
+          ) : (
+            <p className="text-sm text-[--text-tertiary]">
+              Alamat belum diisi.
+            </p>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Sekuens terkait */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        className="glass rounded-2xl p-5"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="section-title text-sm flex items-center gap-2 mb-0">
+            <Dna size={15} className="text-primary-500" /> Sekuens Genetik
+            Terkait
+            <span className="badge badge-primary">{sequences.length}</span>
+          </h3>
+          <button
+            onClick={() => navigate("/sequences/new")}
+            className="btn btn-ghost btn-sm"
+          >
+            <Dna size={13} /> Tambah Sekuens
+          </button>
+        </div>
+        {sequences.length === 0 ? (
+          <p className="text-sm text-[--text-tertiary] text-center py-6">
+            Belum ada sekuens genetik untuk pasien ini.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {sequences.map((seq) => (
+              <button
+                key={seq.id}
+                onClick={() => navigate(`/sequences/${seq.id}`)}
+                className="w-full flex items-center gap-3 p-3.5 rounded-xl hover:bg-[--bg-muted] transition-colors text-left group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary-500/10 flex items-center justify-center flex-shrink-0">
+                  <Dna size={14} className="text-primary-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[--text-primary] truncate">
+                    {seq.name}
+                  </p>
+                  <p className="text-xs text-[--text-tertiary]">
+                    {seq.seq_type} · {seq.sequence_length?.toLocaleString()} bp
+                  </p>
+                </div>
+                <span
+                  className={clsx(
+                    "badge",
+                    seq.seq_type === "DNA"
+                      ? "badge-primary"
+                      : seq.seq_type === "RNA"
+                        ? "badge-accent"
+                        : "badge-warning",
+                  )}
+                >
+                  {seq.seq_type}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </motion.div>
+
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        onConfirm={() => deleteMutation.mutate()}
+        onConfirm={() => deleteMut.mutate()}
         title="Hapus Pasien"
-        description={`Yakin ingin menghapus pasien "${patient?.full_name}"? Tindakan ini tidak dapat dibatalkan.`}
-        isLoading={deleteMutation.isPending}
+        description={`Yakin menghapus "${patient?.full_name}"? Tindakan ini tidak dapat dibatalkan.`}
+        isLoading={deleteMut.isPending}
       />
     </div>
   );

@@ -39,14 +39,17 @@ import DiseaseDetailPage from "./pages/diseases/DiseaseDetailPage";
 import DiseaseFormPage from "./pages/diseases/DiseaseFormPage";
 
 import EthnicityListPage from "./pages/ethnicities/EthnicityListPage";
-import EthnicityFormPage from "./pages/ethnicities/EthnicityFormPage";
 
 import EthnicSequenceListPage from "./pages/ethnic-sequences/EthnicSequenceListPage";
 import EthnicSequenceFormPage from "./pages/ethnic-sequences/EthnicSequenceFormPage";
 import EthnicSequenceDetailPage from "./pages/ethnic-sequences/EthnicSequenceDetailPage";
 
 import LiteraturePage from "./pages/literature/LiteraturePage";
+import LiteratureFormPage from "./pages/literature/LiteratureFormPage";
+
 import ActivityPage from "./pages/activities/ActivityPage";
+import ActivityFormPage from "./pages/activities/ActivityFormPage";
+import ActivityDetailPage from "./pages/activities/ActivityDetailPage";
 
 import AnalysisTaskPage from "./pages/analysis/AnalysisTaskPage";
 import SearchPage from "./pages/search/SearchPage";
@@ -146,8 +149,6 @@ export default function App() {
 
         {/* Ethnicities */}
         <Route path="ethnicities" element={<EthnicityListPage />} />
-        <Route path="ethnicities/new" element={<EthnicityFormPage />} />
-        <Route path="ethnicities/:id/edit" element={<EthnicityFormPage />} />
 
         {/* Ethnic Sequences */}
         <Route path="ethnic-sequences" element={<EthnicSequenceListPage />} />
@@ -166,9 +167,14 @@ export default function App() {
 
         {/* Literature */}
         <Route path="literature" element={<LiteraturePage />} />
+        <Route path="literature/new" element={<LiteratureFormPage />} />
+        <Route path="literature/:id/edit" element={<LiteratureFormPage />} />
 
         {/* Activities */}
         <Route path="activities" element={<ActivityPage />} />
+        <Route path="activities/new" element={<ActivityFormPage />} />
+        <Route path="activities/:id" element={<ActivityDetailPage />} />
+        <Route path="activities/:id/edit" element={<ActivityFormPage />} />
 
         {/* Analysis Tasks */}
         <Route path="analysis/tasks" element={<AnalysisTaskPage />} />

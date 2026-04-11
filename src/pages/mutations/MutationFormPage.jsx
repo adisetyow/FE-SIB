@@ -1,37 +1,22 @@
 /**
  * pages/mutations/MutationFormPage.jsx
- * Route: /mutations/new
- * (Juga bisa dipakai untuk /mutations/new?sequence_id=5 — prefill sequence)
- *
- * API: POST /api/v1/mutations
- * Required fields (dari MutationCreate schema):
- *   - position       : integer
- *   - normal_base    : string
- *   - mutation_base  : string
- *   - mutation_type  : string
- *   - sequence_id    : integer  ← wajib, referensi ke GeneticSequence
- * Optional fields:
- *   - code           : string | null
- *   - description    : string | null
- *   - disease_id     : integer | null
- *
- * Catatan penting:
- * Backend memvalidasi bahwa sequence_id yang dikirim benar-benar ada di database.
- * disease_id juga divalidasi jika diisi.
+ * Create & Edit Mutation.
+ * Wajib: position, normal_base, mutation_base, mutation_type, sequence_id
+ * Opsional: code, description, disease_id
  */
-import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
-  FlaskConical,
+  Microscope,
   Save,
+  Loader2,
+  AlertCircle,
   Info,
-  ArrowRight,
-  Dna,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -41,519 +26,498 @@ import { diseasesApi } from "../../api/diseasesApi";
 import {
   FormField,
   Input,
-  Textarea,
   Select,
+  Textarea,
   FormRow,
 } from "../../components/ui/FormField";
 
-// ─── Mutation types (tidak ada master API, didefinisikan di frontend) ──────────
+const EMPTY = {
+  position: "",
+  normal_base: "",
+  mutation_base: "",
+  mutation_type: "",
+  code: "",
+  description: "",
+  sequence_id: "",
+  disease_id: "",
+};
+
+// Tipe mutasi umum dalam genetika
 const MUTATION_TYPES = [
-  { value: "SNP", label: "SNP", desc: "Single Nucleotide Polymorphism" },
-  {
-    value: "INSERTION",
-    label: "Insertion",
-    desc: "Penambahan satu/lebih basa",
-  },
-  { value: "DELETION", label: "Deletion", desc: "Penghapusan satu/lebih basa" },
-  { value: "SUBSTITUTION", label: "Substitution", desc: "Penggantian basa" },
-  {
-    value: "FRAMESHIFT",
-    label: "Frameshift",
-    desc: "Pergeseran kerangka baca",
-  },
-  { value: "MISSENSE", label: "Missense", desc: "Perubahan asam amino" },
-  { value: "NONSENSE", label: "Nonsense", desc: "Menghasilkan stop codon" },
-  { value: "SILENT", label: "Silent", desc: "Tidak mengubah asam amino" },
+  { value: "SNP", label: "SNP — Single Nucleotide Polymorphism" },
+  { value: "INSERTION", label: "Insertion" },
+  { value: "DELETION", label: "Deletion" },
+  { value: "INDEL", label: "Indel (Insertion-Deletion)" },
+  { value: "FRAMESHIFT", label: "Frameshift" },
+  { value: "MISSENSE", label: "Missense" },
+  { value: "NONSENSE", label: "Nonsense (Stop codon)" },
+  { value: "SILENT", label: "Silent (Synonymous)" },
+  { value: "SPLICE", label: "Splice site" },
+  { value: "CNV", label: "CNV — Copy Number Variation" },
 ];
 
-// ─── Validate ─────────────────────────────────────────────────────────────────
-function validate(form) {
-  const e = {};
-  if (!form.sequence_id) e.sequence_id = "Genetic sequence wajib dipilih";
-  if (!form.position || isNaN(Number(form.position)))
-    e.position = "Posisi wajib diisi (angka)";
-  else if (Number(form.position) < 1) e.position = "Posisi minimal 1";
-  if (!form.normal_base.trim()) e.normal_base = "Base normal wajib diisi";
-  if (!form.mutation_base.trim()) e.mutation_base = "Base mutan wajib diisi";
-  if (!form.mutation_type) e.mutation_type = "Tipe mutasi wajib dipilih";
-  return e;
-}
+// Basa DNA/RNA valid
+const DNA_BASES = ["A", "T", "C", "G", "N"];
+const RNA_BASES = ["A", "U", "C", "G", "N"];
+const PROT_BASES = [
+  "A",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "K",
+  "L",
+  "M",
+  "N",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "V",
+  "W",
+  "Y",
+];
 
-// ─── Section wrapper ──────────────────────────────────────────────────────────
-function Section({ title, children }) {
+function FormSection({ title, subtitle, children }) {
   return (
     <div className="glass rounded-2xl p-6 space-y-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-[--text-tertiary]">
-        {title}
-      </h2>
+      <div className="border-b border-[--border] pb-3">
+        <h2 className="font-display text-base font-bold text-[--text-primary]">
+          {title}
+        </h2>
+        {subtitle && (
+          <p className="text-xs text-[--text-secondary] mt-0.5">{subtitle}</p>
+        )}
+      </div>
       {children}
     </div>
   );
 }
 
-// ─── Mutation Type Card selector ──────────────────────────────────────────────
-// Pilihan tipe mutasi ditampilkan sebagai card grid, bukan dropdown biasa,
-// agar peneliti lebih mudah memilih dengan melihat deskripsinya langsung.
-const TYPE_ACCENT = {
-  SNP: "border-primary-500/40 bg-primary-500/5 text-primary-500",
-  INSERTION: "border-emerald-500/40 bg-emerald-500/5 text-emerald-500",
-  DELETION: "border-rose-500/40 bg-rose-500/5 text-rose-500",
-  SUBSTITUTION: "border-accent-500/40 bg-accent-500/5 text-accent-500",
-  FRAMESHIFT: "border-amber-500/40 bg-amber-500/5 text-amber-500",
-  MISSENSE: "border-amber-500/40 bg-amber-500/5 text-amber-500",
-  NONSENSE: "border-rose-500/40 bg-rose-500/5 text-rose-500",
-  SILENT: "border-[--border] bg-[--bg-subtle] text-[--text-secondary]",
-};
-
-function MutationTypeGrid({ value, onChange, error }) {
+// Preview basa dengan warna
+function BasePreview({ ref: refBase, mut }) {
+  const COLORS = {
+    A: "text-blue-500",
+    T: "text-green-500",
+    G: "text-red-500",
+    C: "text-yellow-500",
+    U: "text-purple-500",
+  };
+  if (!refBase && !mut) return null;
   return (
-    <div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {MUTATION_TYPES.map((m) => (
-          <button
-            key={m.value}
-            type="button"
-            onClick={() => onChange(m.value)}
-            className={clsx(
-              "relative text-left px-3 py-2.5 rounded-xl border transition-all duration-150",
-              value === m.value
-                ? TYPE_ACCENT[m.value]
-                : "border-[--border] bg-[--bg-subtle] text-[--text-secondary] hover:border-[--border-hover] hover:bg-[--bg-muted]",
-            )}
-          >
-            <p className="text-xs font-bold">{m.label}</p>
-            <p className="text-[10px] mt-0.5 leading-tight opacity-70">
-              {m.desc}
-            </p>
-            {value === m.value && (
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-current" />
-            )}
-          </button>
-        ))}
-      </div>
-      {error && <p className="text-xs text-danger-500 mt-1.5">{error}</p>}
+    <div className="flex items-center gap-3 p-3 rounded-xl bg-[--bg-subtle] border border-[--border]">
+      <span
+        className={clsx(
+          "font-mono text-2xl font-black",
+          COLORS[refBase] || "text-[--text-secondary]",
+        )}
+      >
+        {refBase || "?"}
+      </span>
+      <span className="text-[--text-tertiary]">→</span>
+      <span
+        className={clsx(
+          "font-mono text-2xl font-black",
+          COLORS[mut] || "text-[--text-secondary]",
+        )}
+      >
+        {mut || "?"}
+      </span>
+      {refBase && mut && refBase !== mut && (
+        <span className="badge badge-danger ml-2">Mutasi</span>
+      )}
+      {refBase && mut && refBase === mut && (
+        <span className="badge badge-muted ml-2">Identik</span>
+      )}
     </div>
   );
 }
 
-// ─── Base Change Preview ──────────────────────────────────────────────────────
-// Visualisasi perubahan basa secara live saat user mengetik
-function BaseChangePreview({
-  position,
-  normalBase,
-  mutationBase,
-  mutationType,
-}) {
-  if (!normalBase && !mutationBase) return null;
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[--border] bg-[--bg-subtle]">
-      <div className="text-[11px] text-[--text-tertiary] uppercase tracking-wider flex-shrink-0">
-        Preview
-      </div>
-      <div className="flex items-center gap-2 font-mono text-sm flex-wrap">
-        {position && (
-          <span className="text-[--text-tertiary] text-xs">pos.{position}</span>
-        )}
-        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-          {normalBase || "?"}
-        </span>
-        <ArrowRight size={14} className="text-[--text-tertiary]" />
-        <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
-          {mutationBase || "?"}
-        </span>
-        {mutationType && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full border border-[--border] text-[--text-secondary]">
-            {mutationType}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function MutationFormPage() {
+  const { id } = useParams();
+  const isEdit = !!id;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  // Support prefill dari query param: /mutations/new?sequence_id=5
-  const [searchParams] = useSearchParams();
-  const initSequenceId = searchParams.get("sequence_id") || "";
-
-  const [form, setForm] = useState({
-    position: "",
-    normal_base: "",
-    mutation_base: "",
-    mutation_type: "SNP",
-    code: "",
-    description: "",
-    disease_id: "",
-    sequence_id: initSequenceId,
-  });
+  const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
 
-  function set(field, val) {
-    setForm((p) => ({ ...p, [field]: val }));
-    if (errors[field]) setErrors((e) => ({ ...e, [field]: undefined }));
-  }
-
-  // ── Data queries ───────────────────────────────────────────────────────────
-  const { data: sequences = [], isLoading: seqLoading } = useQuery({
+  // Dropdown data
+  const { data: sequences = [] } = useQuery({
     queryKey: ["sequences-dropdown"],
     queryFn: () => geneticsApi.listSequences({ limit: 1000 }),
+    staleTime: 5 * 60 * 1000,
   });
-
   const { data: diseases = [] } = useQuery({
     queryKey: ["diseases-dropdown"],
     queryFn: () => diseasesApi.listDiseases({ limit: 1000 }),
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Cari nama sequence yang dipilih untuk ditampilkan di preview
+  const { data: existing, isLoading: loadingExisting } = useQuery({
+    queryKey: ["mutation", id],
+    queryFn: () => mutationsApi.getMutation(id),
+    enabled: isEdit,
+  });
+
+  useEffect(() => {
+    if (!existing) return;
+    setForm({
+      position: existing.position ?? "",
+      normal_base: existing.normal_base || "",
+      mutation_base: existing.mutation_base || "",
+      mutation_type: existing.mutation_type || "",
+      code: existing.code || "",
+      description: existing.description || "",
+      sequence_id: existing.sequence_id ?? "",
+      disease_id: existing.disease_id ?? "",
+    });
+  }, [existing]);
+
+  function set(f, v) {
+    setForm((p) => ({ ...p, [f]: v }));
+    setErrors((p) => ({ ...p, [f]: "" }));
+  }
+
+  // Tentukan basa yang valid berdasarkan sequence yang dipilih
   const selectedSeq = sequences.find(
     (s) => String(s.id) === String(form.sequence_id),
   );
+  const validBases =
+    selectedSeq?.seq_type === "RNA"
+      ? RNA_BASES
+      : selectedSeq?.seq_type === "PROTEIN"
+        ? PROT_BASES
+        : DNA_BASES;
 
-  // ── Create mutation ────────────────────────────────────────────────────────
-  const createMutation = useMutation({
-    mutationFn: mutationsApi.createMutation,
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["mutations"] });
-      toast.success("Mutasi berhasil ditambahkan");
-      navigate(`/mutations/${data.id}`);
-    },
-    onError: (err) => {
-      const msg =
-        err.response?.data?.detail ?? err.message ?? "Gagal menyimpan mutasi";
-      toast.error(msg);
-    },
-  });
+  function validate() {
+    const e = {};
+    if (!form.sequence_id) e.sequence_id = "Pilih sekuens terkait";
+    if (form.position === "") e.position = "Posisi mutasi wajib diisi";
+    else if (Number(form.position) < 1)
+      e.position = "Posisi harus lebih dari 0";
+    if (!form.normal_base.trim()) e.normal_base = "Basa normal wajib diisi";
+    if (!form.mutation_base.trim()) e.mutation_base = "Basa mutan wajib diisi";
+    if (!form.mutation_type) e.mutation_type = "Tipe mutasi wajib dipilih";
+    return e;
+  }
 
-  function handleSubmit(e) {
-    e.preventDefault();
-    const errs = validate(form);
-    if (Object.keys(errs).length) {
-      setErrors(errs);
-      document
-        .querySelector("[data-error='true']")
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-    setErrors({});
-
-    const payload = {
+  function buildPayload() {
+    return {
       position: Number(form.position),
-      normal_base: form.normal_base.trim(),
-      mutation_base: form.mutation_base.trim(),
+      normal_base: form.normal_base.trim().toUpperCase(),
+      mutation_base: form.mutation_base.trim().toUpperCase(),
       mutation_type: form.mutation_type,
       sequence_id: Number(form.sequence_id),
       code: form.code.trim() || null,
       description: form.description.trim() || null,
       disease_id: form.disease_id !== "" ? Number(form.disease_id) : null,
     };
-
-    createMutation.mutate(payload);
   }
 
-  const isSaving = createMutation.isPending;
+  const createMut = useMutation({
+    mutationFn: mutationsApi.createMutation,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mutations"] });
+      toast.success("Mutasi berhasil ditambahkan");
+      navigate("/mutations");
+    },
+    onError: (e) => toast.error(e.message || "Gagal menyimpan"),
+  });
+  const updateMut = useMutation({
+    mutationFn: (data) => mutationsApi.updateMutation(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mutations"] });
+      qc.invalidateQueries({ queryKey: ["mutation", id] });
+      toast.success("Mutasi berhasil diperbarui");
+      navigate("/mutations");
+    },
+    onError: (e) => toast.error(e.message || "Gagal memperbarui"),
+  });
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      toast.error("Lengkapi field wajib");
+      return;
+    }
+    const payload = buildPayload();
+    if (isEdit) updateMut.mutate(payload);
+    else createMut.mutate(payload);
+  }
+
+  const isSaving = createMut.isPending || updateMut.isPending;
+
+  if (isEdit && loadingExisting) {
+    return (
+      <div className="space-y-5 max-w-2xl animate-pulse">
+        {[1, 2].map((i) => (
+          <div key={i} className="skeleton h-48 rounded-2xl" />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-3xl space-y-5">
-      {/* ── Back ── */}
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <button
-          onClick={() => navigate("/mutations")}
-          className="flex items-center gap-2 text-sm text-[--text-secondary] hover:text-[--text-primary] transition-colors group"
-        >
-          <ArrowLeft
-            size={16}
-            className="group-hover:-translate-x-0.5 transition-transform"
-          />
-          Kembali ke Daftar Mutasi
-        </button>
-      </motion.div>
-
-      {/* ── Page Header ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.04 }}
-        className="glass rounded-2xl p-6"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-accent-400 to-primary-500 flex items-center justify-center shadow-glow-accent">
-            <FlaskConical size={22} className="text-white" />
-          </div>
-          <div>
-            <h1 className="font-display text-xl font-bold text-[--text-primary]">
-              Tambah Mutasi Baru
-            </h1>
-            <p className="text-sm text-[--text-secondary]">
-              Catat mutasi genetik yang ditemukan pada suatu sequence
-            </p>
-          </div>
-        </div>
-
-        {/* Info box */}
-        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[--border] bg-[--bg-subtle] px-4 py-3">
-          <Info size={15} className="text-accent-400 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-[--text-secondary] leading-relaxed">
-            <span className="font-semibold text-[--text-primary]">
-              Sequence wajib ada
-            </span>{" "}
-            sebelum mutasi bisa dicatat. Backend akan memvalidasi bahwa{" "}
-            <span className="font-mono text-primary-400">sequence_id</span> yang
-            dipilih benar-benar ada di database. Pastikan sequence sudah
-            ditambahkan di menu{" "}
-            <button
-              type="button"
-              onClick={() => navigate("/sequences")}
-              className="text-primary-500 hover:underline"
-            >
-              Genetic Sequences
-            </button>
-            .
-          </p>
-        </div>
-      </motion.div>
-
+    <div className="max-w-2xl">
       <form onSubmit={handleSubmit} noValidate>
         <div className="space-y-5">
-          {/* ── Seksi 1: Sequence & Penyakit ── */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
+            className="flex items-center justify-between"
           >
-            <Section title="Referensi">
-              {/* Sequence — wajib */}
+            <button
+              type="button"
+              onClick={() => navigate("/mutations")}
+              className="flex items-center gap-2 text-sm text-[--text-secondary] hover:text-[--text-primary] transition-colors group"
+            >
+              <ArrowLeft
+                size={16}
+                className="group-hover:-translate-x-0.5 transition-transform"
+              />{" "}
+              Kembali ke Daftar Mutasi
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="btn btn-primary"
+            >
+              {isSaving ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Save size={16} />
+              )}
+              {isEdit ? "Simpan Perubahan" : "Simpan Mutasi"}
+            </button>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.04 }}
+          >
+            <h1 className="page-title flex items-center gap-2">
+              <Microscope size={22} className="text-danger-500" />
+              {isEdit ? "Edit Mutasi" : t("mutations.addMutation")}
+            </h1>
+          </motion.div>
+
+          {/* Relasi */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.07 }}
+          >
+            <FormSection
+              title="Relasi Data"
+              subtitle="Sekuens asal dan penyakit terkait"
+            >
               <FormField
-                label="Genetic Sequence"
+                label="Sekuens Genetik"
                 required
                 error={errors.sequence_id}
-                helper="Pilih sequence yang mengandung mutasi ini"
+                helper="Pilih sekuens tempat mutasi ini ditemukan"
               >
                 <Select
                   value={form.sequence_id}
                   onChange={(e) => set("sequence_id", e.target.value)}
                   error={errors.sequence_id}
-                  data-error={!!errors.sequence_id}
-                  disabled={seqLoading}
                 >
-                  <option value="">
-                    {seqLoading ? "Memuat..." : "— Pilih Sequence —"}
-                  </option>
+                  <option value="">— Pilih sekuens —</option>
                   {sequences.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.accession_id ? ` (${s.accession_id})` : ""}
-                      {" — "}
-                      {s.seq_type}
+                      {s.name} {s.gene_symbol ? `(${s.gene_symbol})` : ""} [
+                      {s.seq_type}]
                     </option>
                   ))}
                 </Select>
               </FormField>
-
-              {/* Preview sequence yang dipilih */}
-              {selectedSeq && (
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary-500/5 border border-primary-500/15">
-                  <Dna size={14} className="text-primary-500 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-primary-500 truncate">
-                      {selectedSeq.name}
-                    </p>
-                    <p className="text-[10px] text-[--text-tertiary]">
-                      {selectedSeq.seq_type}
-                      {selectedSeq.chromosome
-                        ? ` · Chr ${selectedSeq.chromosome}`
-                        : ""}
-                      {selectedSeq.gene_symbol
-                        ? ` · ${selectedSeq.gene_symbol}`
-                        : ""}
-                      {selectedSeq.sequence_length
-                        ? ` · ${selectedSeq.sequence_length.toLocaleString()} bp`
-                        : ""}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Disease — opsional */}
               <FormField
-                label="Penyakit Terkait"
-                helper="Opsional — hubungkan ke penyakit yang diketahui terkait mutasi ini"
+                label={t("mutations.disease")}
+                helper="Penyakit yang diasosiasikan dengan mutasi ini (opsional)"
               >
                 <Select
                   value={form.disease_id}
                   onChange={(e) => set("disease_id", e.target.value)}
                 >
-                  <option value="">— Tidak ada / Belum diketahui —</option>
+                  <option value="">— Tidak ada —</option>
                   {diseases.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
-                      {d.icd_code ? ` [${d.icd_code}]` : ""}
+                      {d.icd_code ? ` (${d.icd_code})` : ""}
                     </option>
                   ))}
                 </Select>
               </FormField>
-            </Section>
+            </FormSection>
           </motion.div>
 
-          {/* ── Seksi 2: Tipe Mutasi ── */}
+          {/* Detail mutasi */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12 }}
+            transition={{ delay: 0.1 }}
           >
-            <Section title="Tipe Mutasi">
-              <MutationTypeGrid
-                value={form.mutation_type}
-                onChange={(val) => set("mutation_type", val)}
-                error={errors.mutation_type}
-              />
-            </Section>
-          </motion.div>
-
-          {/* ── Seksi 3: Posisi & Perubahan Basa ── */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.16 }}
-          >
-            <Section title="Posisi & Perubahan Basa">
+            <FormSection
+              title="Detail Mutasi"
+              subtitle="Informasi posisi dan perubahan basa"
+            >
               <FormRow>
                 <FormField
-                  label="Posisi pada Sequence"
+                  label={t("mutations.position")}
                   required
                   error={errors.position}
-                  helper="Nomor posisi basa (1-based indexing)"
+                  helper="Posisi indeks basa pada sekuens (1-based)"
                 >
                   <Input
                     type="number"
-                    placeholder="e.g. 1234"
                     min={1}
+                    placeholder="Contoh: 1234"
                     value={form.position}
                     onChange={(e) => set("position", e.target.value)}
                     error={errors.position}
-                    data-error={!!errors.position}
                     className="font-mono"
                   />
                 </FormField>
-                {/* Kode mutasi (notasi HGVS) */}
                 <FormField
-                  label="Kode Mutasi"
-                  helper="Notasi HGVS, e.g. c.185delAG"
+                  label={t("mutations.mutationType")}
+                  required
+                  error={errors.mutation_type}
                 >
-                  <Input
-                    placeholder="e.g. c.185delAG"
-                    value={form.code}
-                    onChange={(e) => set("code", e.target.value)}
-                    className="font-mono"
-                  />
+                  <Select
+                    value={form.mutation_type}
+                    onChange={(e) => set("mutation_type", e.target.value)}
+                    error={errors.mutation_type}
+                  >
+                    <option value="">— Pilih tipe —</option>
+                    {MUTATION_TYPES.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </Select>
                 </FormField>
               </FormRow>
 
               <FormRow>
                 <FormField
-                  label="Base Normal"
+                  label={t("mutations.normalBase")}
                   required
                   error={errors.normal_base}
-                  helper="Basa pada sequence referensi (wild-type)"
+                  helper={`Basa pada sekuens normal${selectedSeq ? ` (${selectedSeq.seq_type})` : ""}`}
                 >
                   <Input
-                    placeholder="e.g. A"
+                    placeholder={validBases.slice(0, 4).join(" / ")}
                     value={form.normal_base}
                     onChange={(e) =>
-                      set("normal_base", e.target.value.toUpperCase())
+                      set(
+                        "normal_base",
+                        e.target.value.toUpperCase().slice(0, 1),
+                      )
                     }
                     error={errors.normal_base}
-                    data-error={!!errors.normal_base}
-                    className="font-mono uppercase tracking-widest"
-                    maxLength={50}
+                    maxLength={1}
+                    className="font-mono text-lg uppercase text-center tracking-widest"
                   />
                 </FormField>
                 <FormField
-                  label="Base Mutan"
+                  label={t("mutations.mutationBase")}
                   required
                   error={errors.mutation_base}
-                  helper="Basa hasil mutasi yang ditemukan"
+                  helper="Basa pada sekuens mutan"
                 >
                   <Input
-                    placeholder="e.g. T"
+                    placeholder={validBases.slice(0, 4).join(" / ")}
                     value={form.mutation_base}
                     onChange={(e) =>
-                      set("mutation_base", e.target.value.toUpperCase())
+                      set(
+                        "mutation_base",
+                        e.target.value.toUpperCase().slice(0, 1),
+                      )
                     }
                     error={errors.mutation_base}
-                    data-error={!!errors.mutation_base}
-                    className="font-mono uppercase tracking-widest"
-                    maxLength={50}
+                    maxLength={1}
+                    className="font-mono text-lg uppercase text-center tracking-widest"
                   />
                 </FormField>
               </FormRow>
 
-              {/* Live preview perubahan basa */}
-              <BaseChangePreview
-                position={form.position}
-                normalBase={form.normal_base}
-                mutationBase={form.mutation_base}
-                mutationType={form.mutation_type}
-              />
-            </Section>
-          </motion.div>
+              {/* Preview perubahan basa */}
+              <BasePreview ref={form.normal_base} mut={form.mutation_base} />
 
-          {/* ── Seksi 4: Keterangan ── */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Section title="Keterangan Tambahan">
               <FormField
-                label="Deskripsi"
-                helper="Catatan klinis, sumber data, atau informasi relevan lainnya"
+                label={t("mutations.code")}
+                helper="Kode notasi mutasi standar, mis: c.1234A>G, p.Asp123Gly"
               >
-                <Textarea
-                  placeholder="Contoh: Mutasi ini ditemukan pada pasien dengan riwayat keluarga penderita diabetes tipe 2, etnis Jawa..."
-                  value={form.description}
-                  onChange={(e) => set("description", e.target.value)}
-                  rows={4}
+                <Input
+                  placeholder="c.1234A>G"
+                  value={form.code}
+                  onChange={(e) => set("code", e.target.value)}
+                  maxLength={200}
+                  className="font-mono"
                 />
               </FormField>
-            </Section>
+
+              <FormField label={t("common.description")}>
+                <Textarea
+                  placeholder="Deskripsi dampak klinis atau catatan peneliti..."
+                  value={form.description}
+                  onChange={(e) => set("description", e.target.value)}
+                  rows={3}
+                />
+              </FormField>
+            </FormSection>
           </motion.div>
 
-          {/* ── Action Buttons ── */}
+          {/* Sticky bottom */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.24 }}
-            className="flex justify-end gap-3 pb-4"
+            transition={{ delay: 0.13 }}
+            className="sticky bottom-4 z-10"
           >
-            <button
-              type="button"
-              onClick={() => navigate("/mutations")}
-              className="btn btn-ghost"
-              disabled={isSaving}
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <span className="w-4 h-4 rounded-full border-2 border-white/60 border-t-white animate-spin" />
-              ) : (
-                <Save size={15} />
-              )}
-              {isSaving ? "Menyimpan..." : "Simpan Mutasi"}
-            </button>
+            <div className="glass rounded-2xl px-5 py-3.5 flex items-center justify-between gap-4 shadow-glass-md">
+              <div>
+                {Object.keys(errors).length > 0 && (
+                  <span className="flex items-center gap-1.5 text-sm text-danger-500">
+                    <AlertCircle size={15} />
+                    Lengkapi field wajib
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate("/mutations")}
+                  disabled={isSaving}
+                  className="btn btn-ghost"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="btn btn-primary btn-lg relative overflow-hidden group"
+                >
+                  {isSaving ? (
+                    <Loader2 size={17} className="animate-spin" />
+                  ) : (
+                    <Save size={17} />
+                  )}
+                  {isEdit ? "Simpan Perubahan" : "Simpan Mutasi"}
+                  <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-12 pointer-events-none" />
+                </button>
+              </div>
+            </div>
           </motion.div>
         </div>
       </form>

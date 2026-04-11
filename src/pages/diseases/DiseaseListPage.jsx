@@ -1,13 +1,17 @@
+/**
+ * pages/diseases/DiseaseListPage.jsx
+ * Daftar penyakit metabolik dengan search, filter ethnicity_count, export.
+ */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { Plus, HeartPulse, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, HeartPulse, Pencil, Trash2, Eye, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import clsx from "clsx";
 
-import { useDiseases } from "../../hooks/useDiseases";
 import { diseasesApi } from "../../api/diseasesApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
@@ -20,53 +24,78 @@ export default function DiseaseListPage() {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // Query Data
-  const { data: diseases = [], isLoading } = useDiseases({
-    search: search || undefined,
-    limit: 1000,
+  const { data: diseases = [], isLoading } = useQuery({
+    queryKey: ["diseases", search],
+    queryFn: () =>
+      diseasesApi.listDiseases({ limit: 1000, ...(search && { search }) }),
   });
 
-  // Delete Mutation
-  const deleteMutation = useMutation({
+  const deleteMut = useMutation({
     mutationFn: (id) => diseasesApi.deleteDisease(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["diseases"] });
-      toast.success(t("diseases.deleteSuccess", "Penyakit berhasil dihapus"));
+      qc.invalidateQueries({ queryKey: ["diseases-dropdown"] });
+      toast.success("Penyakit berhasil dihapus");
       setDeleteTarget(null);
     },
-    onError: (err) => {
+    onError: (e) =>
       toast.error(
-        err?.response?.data?.message ||
-          "Gagal menghapus. Pastikan tidak ada mutasi yang terhubung.",
-      );
-    },
+        e.message || "Gagal menghapus — mungkin masih ada mutasi terhubung",
+      ),
   });
 
-  // Kolom Tabel
+  function handleExport() {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        diseases.map((d) => ({
+          ID: d.id,
+          Nama: d.name,
+          "Kode ICD": d.icd_code || "",
+          Deskripsi: d.description || "",
+          "Jml Etnis": d.ethnicity_count,
+          "Jml Mutasi": d.mutation_count,
+        })),
+      ),
+      "Diseases",
+    );
+    XLSX.writeFile(
+      wb,
+      `diseases_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+    toast.success("Data diekspor ke Excel");
+  }
+
   const columns = [
     {
       key: "name",
-      header: t("diseases.name", "Nama Penyakit"),
+      header: t("common.name"),
       render: (val, row) => (
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-rose-500/10 flex items-center justify-center flex-shrink-0">
-            <HeartPulse size={13} className="text-rose-500" />
+          <div className="w-8 h-8 rounded-xl bg-warning-400/15 flex items-center justify-center flex-shrink-0">
+            <HeartPulse size={15} className="text-warning-500" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-[--text-primary] truncate max-w-[250px]">
+            <p className="text-sm font-semibold text-[--text-primary] truncate max-w-[200px]">
               {val}
             </p>
+            {row.icd_code && (
+              <p className="text-xs font-mono text-[--text-tertiary]">
+                {row.icd_code}
+              </p>
+            )}
           </div>
         </div>
       ),
     },
     {
-      key: "icd_code",
-      header: t("diseases.icdCode", "Kode ICD"),
-      width: "120px",
+      key: "description",
+      header: t("common.description"),
+      width: "200px",
       render: (val) =>
         val ? (
-          <span className="badge badge-accent font-mono text-[10px]">
+          <span className="text-xs text-[--text-secondary] line-clamp-2">
             {val}
           </span>
         ) : (
@@ -75,20 +104,34 @@ export default function DiseaseListPage() {
     },
     {
       key: "ethnicity_count",
-      header: t("diseases.totalEthnicity", "Total Etnis"),
-      width: "120px",
-      align: "center",
+      header: t("diseases.ethnicityCount"),
+      width: "90px",
+      align: "right",
       render: (val) => (
-        <span className="badge badge-muted text-[10px]">{val || 0}</span>
+        <span
+          className={clsx(
+            "badge",
+            (val || 0) > 0 ? "badge-primary" : "badge-muted",
+          )}
+        >
+          {val ?? 0} etnis
+        </span>
       ),
     },
     {
       key: "mutation_count",
-      header: t("diseases.totalMutation", "Total Mutasi"),
-      width: "120px",
-      align: "center",
+      header: t("diseases.mutationCount"),
+      width: "90px",
+      align: "right",
       render: (val) => (
-        <span className="badge badge-muted text-[10px]">{val || 0}</span>
+        <span
+          className={clsx(
+            "badge",
+            (val || 0) > 0 ? "badge-danger" : "badge-muted",
+          )}
+        >
+          {val ?? 0} mutasi
+        </span>
       ),
     },
     {
@@ -99,17 +142,15 @@ export default function DiseaseListPage() {
       render: (_, row) => (
         <div className="flex items-center justify-end gap-1">
           <button
-            title="Lihat detail"
             onClick={(e) => {
               e.stopPropagation();
               navigate(`/diseases/${row.id}`);
             }}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:text-accent-500 hover:bg-accent-500/10 transition-colors"
           >
             <Eye size={14} />
           </button>
           <button
-            title="Edit"
             onClick={(e) => {
               e.stopPropagation();
               navigate(`/diseases/${row.id}/edit`);
@@ -119,7 +160,6 @@ export default function DiseaseListPage() {
             <Pencil size={14} />
           </button>
           <button
-            title="Hapus"
             onClick={(e) => {
               e.stopPropagation();
               setDeleteTarget(row);
@@ -135,7 +175,6 @@ export default function DiseaseListPage() {
 
   return (
     <div className="space-y-5">
-      {/* Page Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -143,88 +182,55 @@ export default function DiseaseListPage() {
       >
         <div>
           <h1 className="page-title flex items-center gap-2">
-            <HeartPulse size={22} className="text-rose-500" />
-            {t("diseases.title", "Database Penyakit")}
+            <HeartPulse size={22} className="text-warning-500" />
+            {t("diseases.title")}
           </h1>
-          <p className="page-subtitle">
-            {t(
-              "diseases.subtitle",
-              "Referensi penyakit metabolik dan korelasi etnis",
-            )}
-          </p>
+          <p className="page-subtitle">{t("diseases.subtitle")}</p>
         </div>
         <p className="text-sm text-[--text-tertiary]">
-          {isLoading ? "..." : `${diseases.length.toLocaleString()} data`}
+          {isLoading ? "..." : `${diseases.length} penyakit`}
         </p>
       </motion.div>
 
-      {/* Table Card */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.06 }}
         className="glass rounded-2xl p-5 space-y-4"
       >
-        {/* Toolbar */}
-        <div className="flex flex-col sm:flex-row justify-between gap-3">
-          <div className="relative flex-1 min-w-0 max-w-md">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-[--text-tertiary] pointer-events-none"
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-            <input
-              type="search"
-              placeholder={t(
-                "search.placeholder",
-                "Cari nama penyakit atau kode ICD...",
-              )}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input pl-9 py-2 text-sm w-full"
-            />
-          </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={handleExport} className="btn btn-glass btn-sm">
+            <Download size={14} />
+            <span className="hidden sm:inline">Excel</span>
+          </button>
           <button
             onClick={() => navigate("/diseases/new")}
-            className="btn btn-primary btn-sm flex-shrink-0"
+            className="btn btn-primary btn-sm"
           >
             <Plus size={15} />
-            <span className="hidden sm:inline">
-              {t("diseases.addDisease", "Tambah Penyakit")}
-            </span>
-            <span className="sm:hidden">Tambah</span>
+            {t("diseases.addDisease")}
           </button>
         </div>
-
-        {/* Tabel */}
         <DataTable
           columns={columns}
           data={diseases}
           isLoading={isLoading}
+          searchPlaceholder="Cari nama penyakit atau kode ICD..."
+          searchKeys={["name", "icd_code", "description"]}
           onRowClick={(row) => navigate(`/diseases/${row.id}`)}
           emptyLabel="Belum ada data penyakit."
           pageSize={25}
-          hideSearch={true}
+          serverSearch={{ value: search, onChange: setSearch }}
         />
       </motion.div>
 
-      {/* Confirm Dialog */}
       <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
+        onConfirm={() => deleteMut.mutate(deleteTarget.id)}
         title="Hapus Penyakit"
-        description={`Yakin ingin menghapus penyakit "${deleteTarget?.name}"? Tindakan ini tidak dapat dibatalkan.`}
-        isLoading={deleteMutation.isPending}
+        description={`Yakin menghapus "${deleteTarget?.name}"? Akan gagal jika masih ada mutasi terhubung.`}
+        isLoading={deleteMut.isPending}
       />
     </div>
   );

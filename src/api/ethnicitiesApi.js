@@ -1,9 +1,23 @@
-import api from "../utils/apiClient";
+/**
+ * api/ethnicitiesApi.js
+ * Catatan:
+ * - DELETE gagal jika masih ada pasien dengan etnis ini
+ * - List response → EthnicityListResponse (ada patient_count)
+ */
+import apiClient from "../utils/apiClient";
 
-export const getEthnicities = (params) =>
-  api.get("/api/v1/ethnicities/", { params });
-export const getEthnicityById = (id) => api.get(`/api/v1/ethnicities/${id}`);
-export const createEthnicity = (data) => api.post("/api/v1/ethnicities/", data);
-export const updateEthnicity = (id, data) =>
-  api.put(`/api/v1/ethnicities/${id}`, data);
-export const deleteEthnicity = (id) => api.delete(`/api/v1/ethnicities/${id}`);
+export const ethnicitiesApi = {
+  listEthnicities: (params = {}) =>
+    apiClient.get("/api/v1/ethnicities/", { params }).then((r) => r.data),
+
+  getEthnicity: (id) =>
+    apiClient.get(`/api/v1/ethnicities/${id}`).then((r) => r.data),
+
+  createEthnicity: (data) =>
+    apiClient.post("/api/v1/ethnicities/", data).then((r) => r.data),
+
+  updateEthnicity: (id, data) =>
+    apiClient.put(`/api/v1/ethnicities/${id}`, data).then((r) => r.data),
+
+  deleteEthnicity: (id) => apiClient.delete(`/api/v1/ethnicities/${id}`),
+};
