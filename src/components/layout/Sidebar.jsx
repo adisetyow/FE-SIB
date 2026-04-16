@@ -39,7 +39,13 @@ function useNavItems() {
     {
       group: "Analisis",
       items: [
-        { label: t("nav.analyze"), path: "/analyze", icon: FlaskConical },
+        // Tambahkan exact: true agar tidak bertabrakan dengan /analyze/compare
+        {
+          label: t("nav.analyze"),
+          path: "/analyze",
+          icon: FlaskConical,
+          exact: true,
+        },
         { label: "Compare", path: "/analyze/compare", icon: GitCompare },
         { label: t("nav.analysis"), path: "/analysis/tasks", icon: ListTodo },
       ],
@@ -64,7 +70,7 @@ function useNavItems() {
       items: [
         { label: t("nav.literature"), path: "/literature", icon: FileText },
         { label: t("nav.activities"), path: "/activities", icon: FolderOpen },
-        { label: t("nav.analysis"), path: "/analysis/tasks", icon: ListTodo },
+        // Menu Tugas Analisis yang duplikat di sini sudah dihapus
       ],
     },
     {
@@ -122,13 +128,14 @@ export default function Sidebar({ isOpen, onClose }) {
     <aside
       className={clsx(
         "sidebar",
-        // Mobile: transform untuk drawer effect
+        // Tambahkan flex flex-col h-screen agar tinggi sidebar mentok di layar dan area tengah bisa di-scroll
+        "flex flex-col h-screen",
         "lg:translate-x-0",
         isOpen ? "translate-x-0" : "-translate-x-full",
       )}
     >
       {/* ── Logo / Brand ── */}
-      <div className="flex items-center justify-between px-5 h-[60px] border-b border-[--border]">
+      <div className="flex items-center justify-between px-5 h-[60px] border-b border-[--border] flex-shrink-0">
         <NavLink to="/" className="flex items-center gap-2.5 group">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-accent-500 flex items-center justify-center flex-shrink-0">
             <Dna size={16} className="text-white" />
@@ -154,7 +161,8 @@ export default function Sidebar({ isOpen, onClose }) {
       </div>
 
       {/* ── Navigation ── */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5 no-scrollbar">
+      {/* Hapus no-scrollbar agar scrollbar alami muncul dan user sadar menu bisa digeser ke bawah */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
         {navItems.map((item, idx) => {
           // Group dengan section header
           if (item.group) {
@@ -177,7 +185,7 @@ export default function Sidebar({ isOpen, onClose }) {
       </nav>
 
       {/* ── Footer Sidebar ── */}
-      <div className="px-5 py-4 border-t border-[--border]">
+      <div className="px-5 py-4 border-t border-[--border] flex-shrink-0">
         <p className="text-2xs text-[--text-tertiary] text-center">
           {t("common.appFullName")}
         </p>

@@ -17,6 +17,7 @@ import {
   Trash2,
   Download,
   Filter,
+  Eye,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import clsx from "clsx";
@@ -184,6 +185,15 @@ export default function MutationListPage() {
       align: "right",
       render: (_, row) => (
         <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/mutations/${row.id}`); // arahkan ke detail page
+            }}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
+          >
+            <Eye size={14} />
+          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();

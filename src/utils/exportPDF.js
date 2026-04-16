@@ -64,7 +64,7 @@ function drawHeader(doc, title, subtitle = "") {
   // Tagline kanan
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text("Sistem Informasi Biomolekuler — Maranatha", W - 14, 12, {
+  doc.text("Sistem Informasi Biomolekuler — UKSW", W - 14, 12, {
     align: "right",
   });
 
