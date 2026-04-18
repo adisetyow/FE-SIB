@@ -45,6 +45,7 @@ import EthnicSequenceFormPage from "./pages/ethnic-sequences/EthnicSequenceFormP
 import EthnicSequenceDetailPage from "./pages/ethnic-sequences/EthnicSequenceDetailPage";
 
 import LiteraturePage from "./pages/literature/LiteraturePage";
+import LiteratureDetailPage from "./pages/literature/LiteratureDetailPage";
 import LiteratureFormPage from "./pages/literature/LiteratureFormPage";
 
 import ActivityPage from "./pages/activities/ActivityPage";
@@ -52,6 +53,8 @@ import ActivityFormPage from "./pages/activities/ActivityFormPage";
 import ActivityDetailPage from "./pages/activities/ActivityDetailPage";
 
 import AnalysisTaskPage from "./pages/analysis/AnalysisTaskPage";
+import AnalysisDetailPage from "./pages/analysis/AnalysisDetailPage";
+
 import SearchPage from "./pages/search/SearchPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
@@ -168,6 +171,7 @@ export default function App() {
         {/* Literature */}
         <Route path="literature" element={<LiteraturePage />} />
         <Route path="literature/new" element={<LiteratureFormPage />} />
+        <Route path="literature/:id" element={<LiteratureDetailPage />} />
         <Route path="literature/:id/edit" element={<LiteratureFormPage />} />
 
         {/* Activities */}
@@ -178,6 +182,7 @@ export default function App() {
 
         {/* Analysis Tasks */}
         <Route path="analysis/tasks" element={<AnalysisTaskPage />} />
+        <Route path="analysis/tasks/:taskId" element={<AnalysisDetailPage />} />
 
         {/* Global Search */}
         <Route path="search" element={<SearchPage />} />

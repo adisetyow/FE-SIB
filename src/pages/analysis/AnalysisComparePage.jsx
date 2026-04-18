@@ -52,6 +52,7 @@ import {
   Info,
   ChevronRight,
   Hash,
+  HeartPulse,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -814,13 +815,14 @@ export default function AnalysisComparePage() {
                   <MutationTable mutations={task.mutations} />
                 </div>
 
-                {/* Lihat di riwayat */}
-                <div className="flex justify-end">
+                {/* Link ke halaman detail diperkaya */}
+                <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => navigate(`/analysis/tasks/${taskId}`)}
-                    className="btn btn-glass btn-sm gap-1.5"
+                    className="btn btn-primary gap-1.5"
                   >
-                    Lihat di Riwayat
+                    <HeartPulse size={14} />
+                    Lihat Analisis Lengkap
                     <ChevronRight size={14} />
                   </button>
                 </div>

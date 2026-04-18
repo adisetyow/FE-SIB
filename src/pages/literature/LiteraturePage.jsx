@@ -25,6 +25,7 @@ import clsx from "clsx";
 import { literatureApi } from "../../api/literatureApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import { resolveFileUrl } from "../../utils/url";
 
 const LIT_TYPES = [
   "Jurnal",
@@ -154,7 +155,7 @@ export default function LiteraturePage() {
       render: (val, row) =>
         val || row.ncbi_link ? (
           <a
-            href={val || row.ncbi_link}
+            href={resolveFileUrl(val || row.ncbi_link)}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
@@ -173,6 +174,17 @@ export default function LiteraturePage() {
       align: "right",
       render: (_, row) => (
         <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/literature/${row.id}`);
+            }}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:text-accent-500 hover:bg-accent-500/10 transition-colors"
+            title="Lihat Detail"
+          >
+            <Eye size={14} />
+          </button>
+
           <button
             onClick={(e) => {
               e.stopPropagation();

@@ -447,12 +447,6 @@ export default function AnalyzePage() {
           </h1>
           <p className="page-subtitle">{t("analyze.subtitle")}</p>
         </div>
-        <button
-          onClick={() => navigate("/analysis/tasks")}
-          className="btn btn-glass btn-sm"
-        >
-          Riwayat Analisis →
-        </button>
       </motion.div>
 
       {/* ── Mode Tabs ── */}

@@ -23,6 +23,7 @@ import {
   Plus,
   RefreshCw,
   FileText,
+  Eye,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -87,6 +88,7 @@ function fmtDate(iso) {
 function TaskRow({ task: init, index }) {
   const [open, setOpen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const navigate = useNavigate();
 
   const { task } = usePolling(init.id, {
     interval: 2500,
@@ -168,6 +170,16 @@ function TaskRow({ task: init, index }) {
           </div>
         </button>
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Tombol lihat detail lengkap */}
+          {t.status === "COMPLETED" && (
+            <button
+              onClick={() => navigate(`/analysis/tasks/${t.id}`)}
+              title="Lihat analisis lengkap"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:text-accent-500 hover:bg-accent-500/10 transition-colors"
+            >
+              <Eye size={13} />
+            </button>
+          )}
           {t.status === "COMPLETED" && (
             <button
               onClick={handleExportPDF}

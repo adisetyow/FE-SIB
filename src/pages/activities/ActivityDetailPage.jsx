@@ -1,11 +1,12 @@
 /**
  * pages/activities/ActivityDetailPage.jsx
+ * Detail aktivitas dengan tools, evidences, dan modal Tambah Bukti.
  */
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -16,37 +17,244 @@ import {
   FileStack,
   ExternalLink,
   Calendar,
-  Hash,
-  Tag,
+  Plus,
+  Upload,
+  X,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import clsx from "clsx";
 
 import { activitiesApi } from "../../api/activitiesApi";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import Modal from "../../components/ui/Modal";
+import { FormField, Input, Select } from "../../components/ui/FormField";
 
-function InfoRow({ icon: Icon, label, value }) {
-  if (!value) return null;
+const EVIDENCE_TYPES = ["FILE", "LINK", "IMAGE", "VIDEO", "OTHER"];
+
+// ─── Modal Tambah Bukti ───────────────────────────────────────────────────────
+function AddEvidenceModal({ open, onClose, activityId }) {
+  const qc = useQueryClient();
+  const fileRef = useRef(null);
+
+  const [form, setForm] = useState({
+    evidence_info: "",
+    url: "",
+    evidence_type: "FILE",
+  });
+  const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [errors, setErrors] = useState({});
+
+  function set(f, v) {
+    setForm((p) => ({ ...p, [f]: v }));
+    setErrors((p) => ({ ...p, [f]: "" }));
+  }
+
+  function reset() {
+    setForm({ evidence_info: "", url: "", evidence_type: "FILE" });
+    setErrors({});
+    setUploading(false);
+    setUploadPct(0);
+  }
+
+  async function handleFileUpload(file) {
+    if (!file) return;
+    setUploading(true);
+    setUploadPct(0);
+    try {
+      const res = await activitiesApi.uploadEvidence(file, setUploadPct);
+      const url = res?.url || res?.file_url || "";
+      set("url", url);
+      if (!form.evidence_info) set("evidence_info", file.name);
+      toast.success("File berhasil diunggah");
+    } catch (err) {
+      toast.error(err.message || "Gagal mengunggah file");
+    } finally {
+      setUploading(false);
+      setUploadPct(0);
+    }
+  }
+
+  const addMut = useMutation({
+    mutationFn: (data) => activitiesApi.addEvidence(activityId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["activity", activityId] });
+      toast.success("Bukti berhasil ditambahkan");
+      reset();
+      onClose();
+    },
+    onError: (e) => toast.error(e.message || "Gagal menambahkan bukti"),
+  });
+
+  function handleSubmit() {
+    const e = {};
+    if (!form.evidence_info.trim()) e.evidence_info = "Keterangan wajib diisi";
+    if (Object.keys(e).length) {
+      setErrors(e);
+      return;
+    }
+    addMut.mutate({
+      evidence_info: form.evidence_info.trim(),
+      url: form.url.trim() || null,
+      evidence_type: form.evidence_type || "FILE",
+    });
+  }
+
+  const isSaving = addMut.isPending;
+
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-[--border] last:border-0">
-      <div className="w-7 h-7 rounded-lg bg-[--bg-muted] flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Icon size={13} className="text-[--text-tertiary]" />
+    <Modal
+      open={open}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title="Tambah Bukti"
+      size="sm"
+      footer={
+        <>
+          <button
+            onClick={() => {
+              reset();
+              onClose();
+            }}
+            disabled={isSaving}
+            className="btn btn-ghost"
+          >
+            Batal
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSaving || uploading}
+            className="btn btn-primary"
+          >
+            {isSaving ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Plus size={15} />
+            )}
+            Tambah Bukti
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <FormField
+          label="Keterangan"
+          required
+          error={errors.evidence_info}
+          helper="Deskripsi singkat tentang bukti ini"
+        >
+          <Input
+            placeholder="Contoh: Foto pengambilan sampel, laporan hasil lab..."
+            value={form.evidence_info}
+            onChange={(e) => set("evidence_info", e.target.value)}
+            error={errors.evidence_info}
+            maxLength={200}
+          />
+        </FormField>
+
+        <FormField label="Tipe Bukti">
+          <Select
+            value={form.evidence_type}
+            onChange={(e) => set("evidence_type", e.target.value)}
+          >
+            {EVIDENCE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+
+        {/* URL atau upload */}
+        <FormField label="File atau URL Bukti">
+          {form.url ? (
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success-500/8 border border-success-500/20">
+              <CheckCircle2
+                size={14}
+                className="text-success-500 flex-shrink-0"
+              />
+              <span className="text-xs text-success-600 dark:text-success-400 font-mono truncate flex-1">
+                {form.url}
+              </span>
+              <a
+                href={form.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[--text-tertiary] hover:text-accent-500"
+              >
+                <ExternalLink size={12} />
+              </a>
+              <button
+                type="button"
+                onClick={() => set("url", "")}
+                className="text-[--text-tertiary] hover:text-danger-500"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : uploading ? (
+            <div className="space-y-1.5 p-3 rounded-lg border border-primary-500/20 bg-primary-500/5">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <Loader2
+                    size={13}
+                    className="text-primary-500 animate-spin"
+                  />
+                  <span className="text-[--text-primary]">Mengunggah...</span>
+                </div>
+                <span className="font-mono font-bold text-primary-500">
+                  {uploadPct}%
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-[--bg-muted] overflow-hidden">
+                <motion.div
+                  className="h-full bg-primary-500 rounded-full"
+                  animate={{ width: `${uploadPct}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://... atau URL file"
+                value={form.url}
+                onChange={(e) => set("url", e.target.value)}
+                maxLength={500}
+              />
+              <input
+                type="file"
+                ref={fileRef}
+                className="hidden"
+                onChange={(e) => handleFileUpload(e.target.files[0])}
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="btn btn-glass btn-sm flex-shrink-0"
+              >
+                <Upload size={13} /> Upload
+              </button>
+            </div>
+          )}
+        </FormField>
       </div>
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-[--text-tertiary]">
-          {label}
-        </p>
-        <p className="text-sm text-[--text-primary] mt-0.5">{value}</p>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ActivityDetailPage() {
   const { id } = useParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const qc = useQueryClient();
+
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
 
   const {
     data: activity,
@@ -84,14 +292,14 @@ export default function ActivityDetailPage() {
           onClick={() => navigate("/activities")}
           className="btn btn-ghost"
         >
-          <ArrowLeft size={15} />
-          Kembali
+          <ArrowLeft size={15} /> Kembali
         </button>
       </div>
     );
 
   return (
     <div className="space-y-5 max-w-3xl">
+      {/* Actions */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -104,7 +312,7 @@ export default function ActivityDetailPage() {
           <ArrowLeft
             size={16}
             className="group-hover:-translate-x-0.5 transition-transform"
-          />
+          />{" "}
           Kembali
         </button>
         <div className="flex gap-2">
@@ -143,8 +351,8 @@ export default function ActivityDetailPage() {
             </h1>
             <div className="flex flex-wrap gap-3 mt-2 text-xs text-[--text-tertiary]">
               {activity.date && (
-                <span>
-                  <Calendar size={12} className="inline mr-1" />
+                <span className="flex items-center gap-1">
+                  <Calendar size={12} />
                   {new Date(activity.date).toLocaleDateString("id-ID", {
                     day: "2-digit",
                     month: "long",
@@ -182,7 +390,7 @@ export default function ActivityDetailPage() {
         >
           <h3 className="section-title text-sm flex items-center gap-2 mb-4">
             <Wrench size={15} className="text-primary-500" />
-            {t("activities.tools")}{" "}
+            {t("activities.tools")}
             <span className="badge badge-primary">
               {activity.tools?.length ?? 0}
             </span>
@@ -225,17 +433,31 @@ export default function ActivityDetailPage() {
           transition={{ delay: 0.1 }}
           className="glass rounded-2xl p-5"
         >
-          <h3 className="section-title text-sm flex items-center gap-2 mb-4">
-            <FileStack size={15} className="text-accent-500" />
-            {t("activities.evidences")}{" "}
-            <span className="badge badge-accent">
-              {activity.evidences?.length ?? 0}
-            </span>
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="section-title text-sm flex items-center gap-2 mb-0">
+              <FileStack size={15} className="text-accent-500" />
+              {t("activities.evidences")}
+              <span className="badge badge-accent">
+                {activity.evidences?.length ?? 0}
+              </span>
+            </h3>
+            <button
+              onClick={() => setEvidenceOpen(true)}
+              className="btn btn-glass btn-sm gap-1"
+            >
+              <Plus size={13} /> Tambah
+            </button>
+          </div>
           {!activity.evidences?.length ? (
-            <p className="text-sm text-[--text-tertiary] text-center py-4">
-              Tidak ada bukti yang dicatat.
-            </p>
+            <div className="text-center py-4 space-y-2">
+              <p className="text-sm text-[--text-tertiary]">Belum ada bukti.</p>
+              <button
+                onClick={() => setEvidenceOpen(true)}
+                className="btn btn-glass btn-sm"
+              >
+                <Plus size={13} /> Tambah Bukti Pertama
+              </button>
+            </div>
           ) : (
             <div className="space-y-2">
               {activity.evidences.map((ev) => (
@@ -271,6 +493,13 @@ export default function ActivityDetailPage() {
           )}
         </motion.div>
       </div>
+
+      {/* Modal Tambah Bukti */}
+      <AddEvidenceModal
+        open={evidenceOpen}
+        onClose={() => setEvidenceOpen(false)}
+        activityId={id}
+      />
 
       <ConfirmDialog
         open={deleteOpen}

@@ -75,7 +75,6 @@ function ResultCard({ item, groupKey, onClick }) {
   const cfg = GROUP_CFG[groupKey];
   const Icon = cfg?.icon || Search;
 
-  // Ambil field yang paling relevan per tipe
   const title =
     item.name || item.full_name || item.code || item.title || `ID #${item.id}`;
   const sub =
@@ -87,13 +86,10 @@ function ResultCard({ item, groupKey, onClick }) {
     "";
   const desc = item.description || item.disease_name || item.authors || "";
 
-  return (
-    <motion.button
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      onClick={onClick}
-      className="w-full flex items-start gap-3 p-3.5 rounded-xl hover:bg-[--bg-muted] transition-colors text-left group"
-    >
+  const isClickable = groupKey !== "ethnicities";
+
+  const content = (
+    <>
       <div
         className={clsx(
           "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
@@ -102,6 +98,7 @@ function ResultCard({ item, groupKey, onClick }) {
       >
         <Icon size={15} className={cfg?.color || "text-[--text-tertiary]"} />
       </div>
+
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-semibold text-[--text-primary]">{title}</p>
@@ -113,11 +110,37 @@ function ResultCard({ item, groupKey, onClick }) {
           </p>
         )}
       </div>
-      <ChevronRight
-        size={14}
-        className="text-[--text-tertiary] flex-shrink-0 mt-1 group-hover:translate-x-0.5 transition-transform"
-      />
-    </motion.button>
+
+      {isClickable && (
+        <ChevronRight
+          size={14}
+          className="text-[--text-tertiary] flex-shrink-0 mt-1 group-hover:translate-x-0.5 transition-transform"
+        />
+      )}
+    </>
+  );
+
+  if (isClickable) {
+    return (
+      <motion.button
+        initial={{ opacity: 0, x: -8 }}
+        animate={{ opacity: 1, x: 0 }}
+        onClick={onClick}
+        className="w-full flex items-start gap-3 p-3.5 rounded-xl hover:bg-[--bg-muted] transition-colors text-left group cursor-pointer"
+      >
+        {content}
+      </motion.button>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      className="w-full flex items-start gap-3 p-3.5 rounded-xl text-left"
+    >
+      {content}
+    </motion.div>
   );
 }
 
@@ -285,29 +308,49 @@ export default function SearchPage() {
   }
 
   // Parse global results — API mengembalikan open object, kita handle flexibel
+  // Parse global results
   function parseGlobalResults(raw) {
     if (!raw) return [];
+
+    // 1. Arahkan target pencarian ke raw.local_data (jika ada)
+    const targetData = raw.local_data || raw;
+
     const groups = [];
     for (const [key, cfg] of Object.entries(GROUP_CFG)) {
+      // 2. Ambil array data dari dalam targetData
       const items =
-        raw[key] || raw[key + "_results"] || raw[`${key}_list`] || [];
+        targetData[key] ||
+        targetData[key + "_results"] ||
+        targetData[`${key}_list`] ||
+        [];
+
       if (Array.isArray(items) && items.length > 0) {
         groups.push({ key, cfg, items });
       }
     }
-    // Handle flat array result
+
+    // Handle flat array result (fallback aman)
     if (groups.length === 0 && Array.isArray(raw)) {
       groups.push({ key: "sequences", cfg: GROUP_CFG.sequences, items: raw });
     }
+
     return groups;
   }
 
   // Parse blast results
   function parseBlastResults(raw) {
     if (!raw) return [];
+
+    // 1. Cek struktur dari respons API yang baru (berada di dalam blast_result.data.hits)
+    if (raw.blast_result?.data?.hits) {
+      return raw.blast_result.data.hits;
+    }
+
+    // 2. Fallback jika struktur berada di luar (raw.hits)
     const hits = raw.hits || raw.results || raw.blast_hits || [];
     if (Array.isArray(hits)) return hits;
     if (Array.isArray(raw)) return raw;
+
     return [];
   }
 

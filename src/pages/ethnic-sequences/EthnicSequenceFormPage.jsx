@@ -2,24 +2,14 @@
  * pages/ethnic-sequences/EthnicSequenceFormPage.jsx
  *
  * Halaman form untuk CREATE dan EDIT Ethnic Sequence.
- * Route:
- *   /ethnic-sequences/new        → create (upload file + metadata)
- *   /ethnic-sequences/:id/edit   → edit (metadata SAJA, file tidak bisa diubah)
- *
- * Aturan dari API:
- * - Create → multipart/form-data: ethnicity_name, data_type, description?, file
- * - Edit   → JSON: ethnicity_name?, data_type?, description?
- * - File FASTA tidak bisa diubah setelah upload. Harus hapus dan upload ulang.
- * - ID adalah UUID string
- *
- * data_type: NORMAL (sekuens referensi normal) | MUTANT (sekuens yang memiliki mutasi)
+ * Menggunakan custom dropdown dengan fitur search untuk memilih Etnis.
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -34,16 +24,15 @@ import {
   CheckCircle2,
   Lock,
   HelpCircle,
+  ChevronDown,
+  Check,
+  Globe,
 } from "lucide-react";
 import clsx from "clsx";
 
 import { ethnicSequencesApi } from "../../api/ethnicSequencesApi";
-import {
-  FormField,
-  Input,
-  Select,
-  Textarea,
-} from "../../components/ui/FormField";
+import { ethnicitiesApi } from "../../api/ethnicitiesApi";
+import { FormField, Select, Textarea } from "../../components/ui/FormField";
 
 // ─── Accepted FASTA extensions ────────────────────────────────────────────────
 const FASTA_ACCEPT = ".fasta,.fa,.fna,.ffn,.faa,.frn,.fas,.txt";
@@ -56,6 +45,159 @@ function formatSize(bytes) {
   if (mb < 1) return `${(bytes / 1024).toFixed(1)} KB`;
   if (mb < 1024) return `${mb.toFixed(2)} MB`;
   return `${(mb / 1024).toFixed(2)} GB`;
+}
+
+// ─── Dropdown Pilih Etnis (Searchable) ────────────────────────────────────────
+function EthnicitySelect({ value, onChange, error }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef(null);
+  const searchRef = useRef(null);
+
+  const { data: ethnicities = [], isLoading } = useQuery({
+    queryKey: ["ethnicities-list-dropdown"],
+    queryFn: () => ethnicitiesApi.listEthnicities({ limit: 1000 }),
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 50);
+  }, [open]);
+
+  const filtered = ethnicities.filter((e) => {
+    const q = search.toLowerCase();
+    return (
+      e.name?.toLowerCase().includes(q) ||
+      e.region_distribution?.toLowerCase().includes(q)
+    );
+  });
+
+  const selected = ethnicities.find((e) => e.name === value);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={clsx(
+          "input flex items-center gap-2 text-left w-full pr-9 cursor-pointer",
+          error && "input-error",
+          open &&
+            "border-[--border-focus] shadow-[0_0_0_3px_rgba(0,191,191,0.12)]",
+        )}
+      >
+        <Globe size={15} className="text-[--text-tertiary] flex-shrink-0" />
+        {selected ? (
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-medium text-[--text-primary] block truncate">
+              {selected.name}
+            </span>
+            {selected.region_distribution && (
+              <span className="text-xs text-[--text-tertiary] block truncate">
+                {selected.region_distribution}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-sm text-[--text-tertiary] flex-1">
+            Pilih kelompok etnis...
+          </span>
+        )}
+        <ChevronDown
+          size={15}
+          className={clsx(
+            "absolute right-3 text-[--text-tertiary] transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-full left-0 right-0 mt-1.5 z-50 glass rounded-xl shadow-glass-md overflow-hidden"
+          >
+            <div className="p-2 border-b border-[--border]">
+              <input
+                ref={searchRef}
+                type="text"
+                placeholder="Cari nama etnis atau wilayah..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm bg-[--bg-subtle] border border-[--border]
+                  rounded-lg outline-none focus:border-[--border-focus] text-[--text-primary]
+                  placeholder:text-[--text-tertiary]"
+              />
+            </div>
+
+            <div className="max-h-56 overflow-y-auto">
+              {isLoading ? (
+                <div className="px-4 py-6 text-center text-sm text-[--text-tertiary]">
+                  Memuat...
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm text-[--text-tertiary]">
+                  {ethnicities.length === 0
+                    ? "Belum ada data etnis di database."
+                    : `Tidak ada hasil untuk "${search}"`}
+                </div>
+              ) : (
+                filtered.map((eth) => (
+                  <button
+                    key={eth.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(eth.name);
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                    className={clsx(
+                      "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                      eth.name === value
+                        ? "bg-primary-500/10"
+                        : "hover:bg-[--bg-muted]",
+                    )}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-accent-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+                      {eth.name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[--text-primary]">
+                        {eth.name}
+                      </p>
+                      {eth.region_distribution && (
+                        <p className="text-xs text-[--text-tertiary] truncate">
+                          {eth.region_distribution}
+                        </p>
+                      )}
+                    </div>
+                    {eth.name === value && (
+                      <Check
+                        size={14}
+                        className="text-primary-500 flex-shrink-0"
+                      />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
@@ -90,7 +232,6 @@ function FileDropZone({ file, onFile, disabled }) {
 
   function handleFile(f) {
     if (!f) return;
-    // Cek ekstensi
     const ext = "." + f.name.split(".").pop().toLowerCase();
     if (!FASTA_ACCEPT.includes(ext)) {
       toast.error(`Format file tidak didukung. Gunakan: ${FASTA_ACCEPT}`);
@@ -101,7 +242,6 @@ function FileDropZone({ file, onFile, disabled }) {
 
   if (disabled) return null;
 
-  // Sudah ada file yang dipilih
   if (file) {
     return (
       <div className="flex items-center gap-3 p-4 rounded-xl border border-primary-500/30 bg-primary-500/5">
@@ -302,8 +442,7 @@ export default function EthnicSequenceFormPage() {
   // ── Validasi ────────────────────────────────────────────────────────────────
   function validate() {
     const e = {};
-    if (!form.ethnicity_name.trim())
-      e.ethnicity_name = "Nama etnis wajib diisi";
+    if (!form.ethnicity_name.trim()) e.ethnicity_name = "Etnis wajib dipilih";
     if (!form.data_type) e.data_type = "Tipe data wajib dipilih";
     if (!isEdit && !file) e.file = "File FASTA wajib diunggah";
     return e;
@@ -333,10 +472,8 @@ export default function EthnicSequenceFormPage() {
     }
 
     if (isEdit) {
-      // Edit → JSON, tidak kirim file
       updateMutation.mutate(form);
     } else {
-      // Create → multipart upload dengan progress
       setUploading(true);
       setProgress(0);
       try {
@@ -453,19 +590,17 @@ export default function EthnicSequenceFormPage() {
               title="Informasi Etnis"
               subtitle="Identitas dan klasifikasi sekuens referensi ini"
             >
-              {/* Ethnicity Name */}
+              {/* Ethnicity Name Dropdown */}
               <FormField
                 label={t("ethnicSequences.ethnicityName")}
                 required
                 error={errors.ethnicity_name}
-                helper="Nama kelompok etnis di Indonesia (contoh: Jawa, Sunda, Batak Toba, Bugis)"
+                helper="Pilih kelompok etnis dari database"
               >
-                <Input
-                  placeholder="Contoh: Jawa, Sunda, Batak Toba, Minangkabau..."
+                <EthnicitySelect
                   value={form.ethnicity_name}
-                  onChange={(e) => set("ethnicity_name", e.target.value)}
+                  onChange={(val) => set("ethnicity_name", val)}
                   error={errors.ethnicity_name}
-                  maxLength={100}
                 />
               </FormField>
 
@@ -576,7 +711,7 @@ export default function EthnicSequenceFormPage() {
                       },
                       {
                         ok: form.ethnicity_name.trim().length > 0,
-                        label: "Nama etnis sudah diisi",
+                        label: "Nama etnis sudah dipilih",
                       },
                       {
                         ok: !!form.data_type,

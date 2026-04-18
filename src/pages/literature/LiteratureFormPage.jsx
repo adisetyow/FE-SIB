@@ -33,6 +33,8 @@ import {
   Textarea,
   FormRow,
 } from "../../components/ui/FormField";
+import { resolveFileUrl } from "../../utils/url";
+import { toDateOnly } from "../../utils/date";
 
 const LIT_TYPES = [
   "Jurnal",
@@ -109,7 +111,9 @@ export default function LiteratureFormPage() {
       abstract: existing.abstract || "",
       keywords: existing.keywords || "",
       type: existing.type || "",
-      publication_date: existing.publication_date || "",
+      publication_date: existing.publication_date
+        ? existing.publication_date.split("T")[0]
+        : "",
       doi: existing.doi || "",
       issn: existing.issn || "",
       isbn: existing.isbn || "",
@@ -164,7 +168,7 @@ export default function LiteratureFormPage() {
       abstract: form.abstract.trim() || null,
       keywords: form.keywords.trim() || null,
       type: form.type || null,
-      publication_date: form.publication_date || null,
+      publication_date: toDateOnly(form.publication_date),
       doi: form.doi.trim() || null,
       issn: form.issn.trim() || null,
       isbn: form.isbn.trim() || null,
@@ -360,10 +364,9 @@ export default function LiteratureFormPage() {
                   </div>
                   <div className="flex gap-2">
                     <a
-                      href={fileUrl}
+                      href={resolveFileUrl(fileUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-[--text-tertiary] hover:text-accent-500 hover:bg-accent-500/10 transition-colors"
                     >
                       <ExternalLink size={14} />
                     </a>
