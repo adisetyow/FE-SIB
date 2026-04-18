@@ -36,6 +36,7 @@ import {
   Textarea,
   FormRow,
 } from "../../components/ui/FormField";
+import { resolveFileUrl } from "../../utils/fileUrl";
 
 const EMPTY_TOOL = { tool_name: "", description: "" };
 const EMPTY_EVIDENCE = { evidence_info: "", url: "", evidence_type: "FILE" };
@@ -140,8 +141,8 @@ function EvidencesEditor({ value, onChange }) {
     setUploadIdx(idx);
     try {
       const res = await activitiesApi.uploadEvidence(file);
-      const url = res?.url || res?.file_url || "";
-      set(idx, "url", url);
+      const rawUrl = res?.url || res?.file_url || "";
+      set(idx, "url", resolveFileUrl(rawUrl));
       set(idx, "evidence_info", file.name);
       toast.success("File bukti berhasil diunggah");
     } catch (err) {
@@ -208,7 +209,7 @@ function EvidencesEditor({ value, onChange }) {
                   {ev.url}
                 </span>
                 <a
-                  href={ev.url}
+                  href={resolveFileUrl(ev.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[--text-tertiary] hover:text-accent-500"

@@ -29,6 +29,7 @@ import { activitiesApi } from "../../api/activitiesApi";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import Modal from "../../components/ui/Modal";
 import { FormField, Input, Select } from "../../components/ui/FormField";
+import { resolveFileUrl } from "../../utils/fileUrl";
 
 const EVIDENCE_TYPES = ["FILE", "LINK", "IMAGE", "VIDEO", "OTHER"];
 
@@ -64,8 +65,8 @@ function AddEvidenceModal({ open, onClose, activityId }) {
     setUploadPct(0);
     try {
       const res = await activitiesApi.uploadEvidence(file, setUploadPct);
-      const url = res?.url || res?.file_url || "";
-      set("url", url);
+      const rawUrl = res?.url || res?.file_url || "";
+      set("url", resolveFileUrl(rawUrl));
       if (!form.evidence_info) set("evidence_info", file.name);
       toast.success("File berhasil diunggah");
     } catch (err) {
@@ -479,7 +480,7 @@ export default function ActivityDetailPage() {
                   </div>
                   {ev.url && (
                     <a
-                      href={ev.url}
+                      href={resolveFileUrl(ev.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-6 h-6 rounded flex items-center justify-center text-[--text-tertiary] hover:text-accent-500 flex-shrink-0"
