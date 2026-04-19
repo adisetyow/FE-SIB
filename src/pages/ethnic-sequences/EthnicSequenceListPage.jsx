@@ -37,6 +37,7 @@ import clsx from "clsx";
 import { ethnicSequencesApi } from "../../api/ethnicSequencesApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import { useDebounce } from "../../hooks/useDebounce";
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -83,15 +84,17 @@ export default function EthnicSequenceListPage() {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  const debouncedSearch = useDebounce(search, 400);
   // ── Query ─────────────────────────────────────────────────────────────────
   const { data: sequences = [], isLoading } = useQuery({
-    queryKey: ["ethnic-sequences", filterType, filterName, search],
+    queryKey: ["ethnic-sequences", filterType, filterName, debouncedSearch],
+
     queryFn: () =>
       ethnicSequencesApi.listEthnicSequences({
         limit: 1000,
         ...(filterType && { data_type: filterType }),
         ...(filterName && { ethnicity_name: filterName }),
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
       }),
   });
 
@@ -455,9 +458,13 @@ export default function EthnicSequenceListPage() {
           isLoading={isLoading}
           onRowClick={(row) => navigate(`/ethnic-sequences/${row.id}`)}
           rowKey="id"
-          emptyLabel="Belum ada data sekuens etnis. Klik 'Upload Sekuens' untuk menambahkan."
+          emptyLabel={
+            search
+              ? "Tidak ada hasil pencarian."
+              : "Belum ada data sekuens etnis. Klik 'Upload Sekuens' untuk menambahkan."
+          }
           pageSize={25}
-          serverSearch={{ value: search, onChange: setSearch }}
+          hideSearch
         />
       </motion.div>
 

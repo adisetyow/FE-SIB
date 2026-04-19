@@ -24,6 +24,7 @@ import clsx from "clsx";
 import { activitiesApi } from "../../api/activitiesApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import { useDebounce } from "../../hooks/useDebounce";
 
 export default function ActivityPage() {
   const { t } = useTranslation();
@@ -33,10 +34,15 @@ export default function ActivityPage() {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  const debouncedSearch = useDebounce(search, 400);
+
   const { data: list = [], isLoading } = useQuery({
-    queryKey: ["activities", search],
+    queryKey: ["activities", debouncedSearch],
     queryFn: () =>
-      activitiesApi.listActivities({ limit: 1000, ...(search && { search }) }),
+      activitiesApi.listActivities({
+        limit: 1000,
+        ...(debouncedSearch && { search: debouncedSearch }),
+      }),
   });
 
   const deleteMut = useMutation({
@@ -211,29 +217,58 @@ export default function ActivityPage() {
         transition={{ delay: 0.06 }}
         className="glass rounded-2xl p-5 space-y-4"
       >
-        <div className="flex gap-2 justify-end">
-          <button onClick={handleExport} className="btn btn-glass btn-sm">
-            <Download size={14} />
-            <span className="hidden sm:inline">Excel</span>
-          </button>
-          <button
-            onClick={() => navigate("/activities/new")}
-            className="btn btn-primary btn-sm"
-          >
-            <Plus size={15} />
-            {t("activities.addActivity")}
-          </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* LEFT: Search */}
+          <div className="relative flex-1 min-w-0">
+            <svg
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[--text-tertiary]"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+
+            <input
+              type="search"
+              placeholder="Cari nama atau nomor aktivitas..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-9 py-2 text-sm w-full"
+            />
+          </div>
+
+          {/* RIGHT: Actions */}
+          <div className="flex gap-2">
+            <button onClick={handleExport} className="btn btn-glass btn-sm">
+              <Download size={14} />
+              <span className="hidden sm:inline">Excel</span>
+            </button>
+            <button
+              onClick={() => navigate("/activities/new")}
+              className="btn btn-primary btn-sm"
+            >
+              <Plus size={15} />
+              {t("activities.addActivity")}
+            </button>
+          </div>
         </div>
         <DataTable
           columns={columns}
           data={list}
           isLoading={isLoading}
-          searchPlaceholder="Cari nama atau nomor aktivitas..."
-          searchKeys={["activity_name", "activity_number", "researcher_name"]}
           onRowClick={(row) => navigate(`/activities/${row.id}`)}
-          emptyLabel="Belum ada aktivitas penelitian."
+          emptyLabel={
+            search
+              ? "Tidak ada hasil pencarian."
+              : "Belum ada aktivitas penelitian."
+          }
           pageSize={25}
-          serverSearch={{ value: search, onChange: setSearch }}
+          hideSearch
         />
       </motion.div>
 

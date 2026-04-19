@@ -433,7 +433,7 @@ export default function AnalyzePage() {
   ];
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       {/* ── Header ── */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}

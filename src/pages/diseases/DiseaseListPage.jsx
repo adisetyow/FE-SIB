@@ -8,13 +8,22 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { Plus, HeartPulse, Pencil, Trash2, Eye, Download } from "lucide-react";
+import {
+  Plus,
+  HeartPulse,
+  Pencil,
+  Trash2,
+  Eye,
+  Download,
+  Filter,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 import clsx from "clsx";
 
 import { diseasesApi } from "../../api/diseasesApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import { useDebounce } from "../../hooks/useDebounce";
 
 export default function DiseaseListPage() {
   const { t } = useTranslation();
@@ -23,11 +32,24 @@ export default function DiseaseListPage() {
 
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [filterHasMutation, setFilterHasMutation] = useState("");
 
-  const { data: diseases = [], isLoading } = useQuery({
-    queryKey: ["diseases", search],
+  const debouncedSearch = useDebounce(search, 400);
+
+  const { data: rawDiseases = [], isLoading } = useQuery({
+    queryKey: ["diseases", debouncedSearch],
     queryFn: () =>
-      diseasesApi.listDiseases({ limit: 1000, ...(search && { search }) }),
+      diseasesApi.listDiseases({
+        limit: 1000,
+        ...(debouncedSearch && { search: debouncedSearch }),
+      }),
+    keepPreviousData: true,
+  });
+
+  const diseases = rawDiseases.filter((d) => {
+    if (filterHasMutation === "yes") return (d.mutation_count || 0) > 0;
+    if (filterHasMutation === "no") return (d.mutation_count || 0) === 0;
+    return true;
   });
 
   const deleteMut = useMutation({
@@ -198,29 +220,90 @@ export default function DiseaseListPage() {
         transition={{ delay: 0.06 }}
         className="glass rounded-2xl p-5 space-y-4"
       >
-        <div className="flex gap-2 justify-end">
-          <button onClick={handleExport} className="btn btn-glass btn-sm">
-            <Download size={14} />
-            <span className="hidden sm:inline">Excel</span>
-          </button>
-          <button
-            onClick={() => navigate("/diseases/new")}
-            className="btn btn-primary btn-sm"
-          >
-            <Plus size={15} />
-            {t("diseases.addDisease")}
-          </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-1 gap-2 flex-wrap sm:flex-nowrap">
+            {/* Filter icon */}
+            <Filter
+              size={14}
+              className="text-[--text-tertiary] self-center flex-shrink-0"
+            />
+
+            {/* Filter mutation */}
+            <select
+              value={filterHasMutation}
+              onChange={(e) => setFilterHasMutation(e.target.value)}
+              className="text-sm px-3 py-2 rounded-lg border border-[--border] bg-[--bg-surface] text-[--text-primary] outline-none focus:border-[--border-focus] cursor-pointer flex-shrink-0"
+            >
+              <option value="">Semua</option>
+              <option value="yes">Ada Mutasi</option>
+              <option value="no">Tidak Ada</option>
+            </select>
+
+            {/* Search */}
+            <div className="relative flex-1 min-w-0">
+              <svg
+                aria-hidden="true"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[--text-tertiary] pointer-events-none"
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+
+              <input
+                type="search"
+                placeholder="Cari nama penyakit atau kode ICD..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input pl-9 py-2 text-sm w-full"
+              />
+            </div>
+
+            {/* Reset */}
+            {(filterHasMutation || search) && (
+              <button
+                onClick={() => {
+                  setFilterHasMutation("");
+                  setSearch("");
+                }}
+                className="text-xs text-primary-500 hover:underline flex-shrink-0 self-center"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={handleExport} className="btn btn-glass btn-sm">
+              <Download size={14} />
+              <span className="hidden sm:inline">Excel</span>
+            </button>
+
+            <button
+              onClick={() => navigate("/diseases/new")}
+              className="btn btn-primary btn-sm"
+            >
+              <Plus size={15} />
+              {t("diseases.addDisease")}
+            </button>
+          </div>
         </div>
         <DataTable
           columns={columns}
           data={diseases}
           isLoading={isLoading}
-          searchPlaceholder="Cari nama penyakit atau kode ICD..."
-          searchKeys={["name", "icd_code", "description"]}
           onRowClick={(row) => navigate(`/diseases/${row.id}`)}
-          emptyLabel="Belum ada data penyakit."
+          emptyLabel={
+            search ? "Tidak ada hasil pencarian." : "Belum ada data penyakit."
+          }
           pageSize={25}
-          serverSearch={{ value: search, onChange: setSearch }}
+          hideSearch
         />
       </motion.div>
 

@@ -18,13 +18,14 @@ import {
   Loader2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import clsx from "clsx";
+// import clsx from "clsx";
 
 import { ethnicitiesApi } from "../../api/ethnicitiesApi";
 import DataTable from "../../components/ui/DataTable";
 import Modal from "../../components/ui/Modal";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
-import { FormField, Input, Textarea } from "../../components/ui/FormField";
+import { FormField, Input } from "../../components/ui/FormField";
+import { useDebounce } from "../../hooks/useDebounce";
 
 const EMPTY = { name: "", region_distribution: "" };
 
@@ -39,12 +40,14 @@ export default function EthnicityListPage() {
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
 
-  const { data: list = [], isLoading } = useQuery({
-    queryKey: ["ethnicities", search],
+  const debouncedSearch = useDebounce(search, 400);
+
+  const { data: ethnicities = [], isLoading } = useQuery({
+    queryKey: ["ethnicities", debouncedSearch],
     queryFn: () =>
       ethnicitiesApi.listEthnicities({
         limit: 1000,
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
       }),
   });
 
@@ -100,6 +103,8 @@ export default function EthnicityListPage() {
   function closeModal() {
     setModalOpen(false);
     setEditTarget(null);
+    setForm(EMPTY);
+    setErrors({});
   }
   function set(f, v) {
     setForm((p) => ({ ...p, [f]: v }));
@@ -131,11 +136,11 @@ export default function EthnicityListPage() {
     XLSX.utils.book_append_sheet(
       wb,
       XLSX.utils.json_to_sheet(
-        list.map((e) => ({
+        ethnicities.map((e) => ({
           ID: e.id,
           Nama: e.name,
           Wilayah: e.region_distribution || "",
-          Pasien: e.patient_count,
+          Pasien: e.patient_count ?? 0,
         })),
       ),
       "Ethnicities",
@@ -156,7 +161,7 @@ export default function EthnicityListPage() {
       render: (val, row) => (
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-400 to-accent-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-            {val?.charAt(0)}
+            {val?.charAt(0).toUpperCase()}
           </div>
           <div>
             <p className="text-sm font-semibold text-[--text-primary]">{val}</p>
@@ -228,7 +233,7 @@ export default function EthnicityListPage() {
           <p className="page-subtitle">{t("ethnicities.subtitle")}</p>
         </div>
         <p className="text-sm text-[--text-tertiary]">
-          {isLoading ? "..." : `${list.length} etnis`}
+          {isLoading ? "..." : `${ethnicities.length} etnis`}
         </p>
       </motion.div>
 
@@ -238,25 +243,56 @@ export default function EthnicityListPage() {
         transition={{ delay: 0.06 }}
         className="glass rounded-2xl p-5 space-y-4"
       >
-        <div className="flex gap-2 justify-end">
-          <button onClick={handleExport} className="btn btn-glass btn-sm">
-            <Download size={14} />
-            <span className="hidden sm:inline">Excel</span>
-          </button>
-          <button onClick={openCreate} className="btn btn-primary btn-sm">
-            <Plus size={15} />
-            {t("ethnicities.addEthnicity")}
-          </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* LEFT: Search */}
+          <div className="relative flex-1 min-w-0">
+            <svg
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[--text-tertiary] pointer-events-none"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <Input
+              placeholder="Cari nama etnis atau wilayah..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-9 py-2 text-sm w-full"
+            />
+          </div>
+
+          {/* RIGHT: Actions */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleExport}
+              disabled={isLoading || !ethnicities.length}
+              className="btn btn-glass btn-sm"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">Excel</span>
+            </button>
+
+            <button onClick={openCreate} className="btn btn-primary btn-sm">
+              <Plus size={15} />
+              {t("ethnicities.addEthnicity")}
+            </button>
+          </div>
         </div>
         <DataTable
           columns={columns}
-          data={list}
+          data={ethnicities}
           isLoading={isLoading}
-          searchPlaceholder="Cari nama etnis atau wilayah..."
-          searchKeys={["name", "region_distribution"]}
-          emptyLabel="Belum ada data etnis. Klik 'Tambah Etnis' untuk memulai."
+          emptyLabel={
+            search ? "Tidak ada hasil pencarian." : "Belum ada data etnis."
+          }
           pageSize={25}
-          serverSearch={{ value: search, onChange: setSearch }}
+          hideSearch
         />
       </motion.div>
 

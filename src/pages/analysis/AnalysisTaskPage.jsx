@@ -422,7 +422,7 @@ export default function AnalysisTaskPage() {
   ];
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5">
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}

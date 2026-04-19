@@ -25,6 +25,7 @@ import { patientsApi } from "../../api/patientsApi";
 import { ethnicitiesApi } from "../../api/ethnicitiesApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import { useDebounce } from "../../hooks/useDebounce";
 
 const GENDER_LABEL = { MALE: "Laki-laki", FEMALE: "Perempuan" };
 const GENDER_COLOR = { MALE: "badge-accent", FEMALE: "badge-primary" };
@@ -45,12 +46,14 @@ export default function PatientListPage() {
   const [filterEthnic, setFilterEthnic] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  const debouncedSearch = useDebounce(search, 400);
+
   const { data: patients = [], isLoading } = useQuery({
-    queryKey: ["patients", search, filterGender, filterEthnic],
+    queryKey: ["patients", debouncedSearch, filterGender, filterEthnic],
     queryFn: () =>
       patientsApi.listPatients({
         limit: 1000,
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(filterGender && { gender: filterGender }),
         ...(filterEthnic && { ethnicity_id: filterEthnic }),
       }),
@@ -332,9 +335,11 @@ export default function PatientListPage() {
           data={patients}
           isLoading={isLoading}
           onRowClick={(row) => navigate(`/patients/${row.id}`)}
-          emptyLabel="Belum ada data pasien."
+          emptyLabel={
+            search ? "Tidak ada hasil pencarian." : "Belum ada data pasien."
+          }
           pageSize={25}
-          serverSearch={{ value: search, onChange: setSearch }}
+          hideSearch
         />
       </motion.div>
 

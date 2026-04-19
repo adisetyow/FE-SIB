@@ -26,6 +26,7 @@ import { mutationsApi } from "../../api/mutationsApi";
 import { diseasesApi } from "../../api/diseasesApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import { useDebounce } from "../../hooks/useDebounce";
 
 export default function MutationListPage() {
   const { t } = useTranslation();
@@ -36,13 +37,14 @@ export default function MutationListPage() {
   const [filterType, setFilterType] = useState("");
   const [filterDisease, setFilterDisease] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const debouncedSearch = useDebounce(search, 400);
 
   const { data: mutations = [], isLoading } = useQuery({
-    queryKey: ["mutations", search, filterType, filterDisease],
+    queryKey: ["mutations", debouncedSearch, filterType, filterDisease],
     queryFn: () =>
       mutationsApi.listMutations({
         limit: 1000,
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(filterType && { mutation_type: filterType }),
         ...(filterDisease && { disease_id: filterDisease }),
       }),
@@ -325,11 +327,11 @@ export default function MutationListPage() {
           columns={columns}
           data={mutations}
           isLoading={isLoading}
-          searchPlaceholder="Cari kode atau deskripsi..."
-          searchKeys={["code", "description", "disease_name", "sequence_name"]}
-          emptyLabel="Belum ada data mutasi."
+          emptyLabel={
+            search ? "Tidak ada hasil pencarian." : "Belum ada data muatasi."
+          }
           pageSize={25}
-          serverSearch={{ value: search, onChange: setSearch }}
+          hideSearch
         />
       </motion.div>
 

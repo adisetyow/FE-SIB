@@ -26,6 +26,7 @@ import { literatureApi } from "../../api/literatureApi";
 import DataTable from "../../components/ui/DataTable";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import { resolveFileUrl } from "../../utils/url";
+import { useDebounce } from "../../hooks/useDebounce";
 
 const LIT_TYPES = [
   "Jurnal",
@@ -46,12 +47,14 @@ export default function LiteraturePage() {
   const [filterType, setFilterType] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  const debouncedSearch = useDebounce(search, 400);
+
   const { data: list = [], isLoading } = useQuery({
-    queryKey: ["literature", search, filterType],
+    queryKey: ["literature", debouncedSearch, filterType],
     queryFn: () =>
       literatureApi.listLiterature({
         limit: 1000,
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(filterType && { type: filterType }),
       }),
   });
@@ -302,11 +305,11 @@ export default function LiteraturePage() {
           columns={columns}
           data={list}
           isLoading={isLoading}
-          searchPlaceholder="Cari judul atau penulis..."
-          searchKeys={["title", "authors", "publisher"]}
-          emptyLabel="Belum ada data literatur."
+          emptyLabel={
+            search ? "Tidak ada hasil pencarian." : "Belum ada data literatur."
+          }
           pageSize={25}
-          serverSearch={{ value: search, onChange: setSearch }}
+          hideSearch
         />
       </motion.div>
 
