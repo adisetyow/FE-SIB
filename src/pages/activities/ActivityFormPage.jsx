@@ -36,7 +36,6 @@ import {
   Textarea,
   FormRow,
 } from "../../components/ui/FormField";
-import { resolveFileUrl } from "../../utils/fileUrl";
 
 const EMPTY_TOOL = { tool_name: "", description: "" };
 const EMPTY_EVIDENCE = { evidence_info: "", url: "", evidence_type: "FILE" };
@@ -141,8 +140,8 @@ function EvidencesEditor({ value, onChange }) {
     setUploadIdx(idx);
     try {
       const res = await activitiesApi.uploadEvidence(file);
-      const rawUrl = res?.url || res?.file_url || "";
-      set(idx, "url", resolveFileUrl(rawUrl));
+      const url = res?.url || res?.file_url || "";
+      set(idx, "url", url);
       set(idx, "evidence_info", file.name);
       toast.success("File bukti berhasil diunggah");
     } catch (err) {
@@ -209,7 +208,7 @@ function EvidencesEditor({ value, onChange }) {
                   {ev.url}
                 </span>
                 <a
-                  href={resolveFileUrl(ev.url)}
+                  href={ev.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[--text-tertiary] hover:text-accent-500"
@@ -342,12 +341,20 @@ export default function ActivityFormPage() {
   }
 
   function buildPayload() {
-    return {
+    // ResearchActivityUpdate (PUT) hanya support: activity_number, activity_name, date, action_type, details
+    // ResearchActivityCreate (POST) support tambahan: tools[], evidences[]
+    const base = {
       activity_number: form.activity_number.trim(),
       activity_name: form.activity_name.trim(),
       date: form.date,
       action_type: form.action_type.trim() || null,
       details: form.details.trim() || null,
+    };
+    if (isEdit) return base; // PUT: API tidak menerima tools/evidences
+
+    // POST only
+    return {
+      ...base,
       tools: tools
         .filter((t) => t.tool_name.trim())
         .map((t) => ({

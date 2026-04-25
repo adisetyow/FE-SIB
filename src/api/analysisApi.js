@@ -15,23 +15,29 @@
  * 3. GET /api/v1/analysis/tasks  ← list semua task milik user
  *    → Filter: status, reference_sequence_id
  */
-import apiClient from '../utils/apiClient'
+import apiClient from "../utils/apiClient";
 
 export const analysisApi = {
-
   // POST /api/v1/analysis/compare-local
   // Response 202 — task berjalan di background
   startAnalysis: (data) =>
-    apiClient.post('/api/v1/analysis/compare-local', {
-      sample_sequence:      data.sample_sequence,
-      reference_sequence_id: data.reference_sequence_id,
-    }).then(r => r.data),
+    apiClient
+      .post("/api/v1/analysis/compare-local", {
+        sample_sequence: data.sample_sequence,
+        reference_sequence_id: data.reference_sequence_id,
+      })
+      .then((r) => r.data),
 
   // GET /api/v1/analysis/tasks/{task_id}
-  getTask: (taskId) =>
-    apiClient.get(`/api/v1/analysis/tasks/${taskId}`).then(r => r.data),
+  // Support pagination mutasi: mutation_page (default=1), mutation_limit (default=500, max=5000)
+  getTask: (taskId, mutationPage = 1, mutationLimit = 500) =>
+    apiClient
+      .get(`/api/v1/analysis/tasks/${taskId}`, {
+        params: { mutation_page: mutationPage, mutation_limit: mutationLimit },
+      })
+      .then((r) => r.data),
 
   // GET /api/v1/analysis/tasks
   listTasks: (params = {}) =>
-    apiClient.get('/api/v1/analysis/tasks', { params }).then(r => r.data),
-}
+    apiClient.get("/api/v1/analysis/tasks", { params }).then((r) => r.data),
+};
