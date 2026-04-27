@@ -96,12 +96,15 @@ export default function EthnicSequenceListPage() {
         ...(filterName && { ethnicity_name: filterName }),
         ...(debouncedSearch && { search: debouncedSearch }),
       }),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
   });
 
   const { data: dataTypes = [] } = useQuery({
     queryKey: ["ethnic-data-types"],
     queryFn: ethnicSequencesApi.getDataTypes,
     staleTime: Infinity,
+    gcTime: Infinity,
   });
 
   // Ambil daftar etnisitas unik dari data untuk filter dropdown

@@ -35,54 +35,52 @@ const queryClient = new QueryClient({
 });
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
+// ─── Root ─────────────────────────────────────────────────────────────────────
 createRoot(document.getElementById("root")).render(
-  <StrictMode>
-    {/* Theme provider — class-based dark mode untuk Tailwind */}
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="light"
-      enableSystem={false}
-      storageKey="sib_theme"
-    >
-      {/* React Query */}
-      <QueryClientProvider client={queryClient}>
-        {/* Auth state global */}
-        <AuthProvider>
-          {/* Router */}
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+  <ThemeProvider
+    attribute="class"
+    defaultTheme="light"
+    enableSystem={false}
+    storageKey="sib_theme"
+  >
+    {/* React Query */}
+    <QueryClientProvider client={queryClient}>
+      {/* Auth state global */}
+      <AuthProvider>
+        {/* Router */}
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
 
-          {/* Toast notifikasi — posisi kanan atas */}
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: "var(--bg-surface)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border)",
-                borderRadius: "0.75rem",
-                fontSize: "0.875rem",
-                boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-                backdropFilter: "blur(12px)",
+        {/* Toast notifikasi — posisi kanan atas */}
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: "var(--bg-surface)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border)",
+              borderRadius: "0.75rem",
+              fontSize: "0.875rem",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+              backdropFilter: "blur(12px)",
+            },
+            success: {
+              iconTheme: {
+                primary: "#00bfbf",
+                secondary: "white",
               },
-              success: {
-                iconTheme: {
-                  primary: "#00bfbf",
-                  secondary: "white",
-                },
+            },
+            error: {
+              iconTheme: {
+                primary: "#ef4444",
+                secondary: "white",
               },
-              error: {
-                iconTheme: {
-                  primary: "#ef4444",
-                  secondary: "white",
-                },
-              },
-            }}
-          />
-        </AuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
-  </StrictMode>,
+            },
+          }}
+        />
+      </AuthProvider>
+    </QueryClientProvider>
+  </ThemeProvider>,
 );

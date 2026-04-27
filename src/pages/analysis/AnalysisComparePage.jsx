@@ -1,34 +1,20 @@
 /**
  * pages/analysis/AnalysisComparePage.jsx
  *
- * Halaman untuk menjalankan analisis perbandingan sekuens:
+ * Halaman analisis perbandingan sekuens:
  *   POST /api/v1/analysis/compare-local
  *
- * Flow halaman:
- * ┌─ Step 1: Form Input ──────────────────────────────────────────┐
- * │  - Textarea sample sequence (min 10 karakter)                 │
- * │  - Dropdown pilih reference ethnic sequence (READY saja)      │
- * │  - Tombol "Mulai Analisis"                                    │
- * └───────────────────────────────────────────────────────────────┘
- *           ↓ submit → POST → dapat task_id
- * ┌─ Step 2: Polling ─────────────────────────────────────────────┐
- * │  - Status indicator: PENDING → PROCESSING → COMPLETED/FAILED  │
- * │  - Progress animasi (indeterminate)                           │
- * │  - Auto-refresh setiap 2.5 detik                             │
- * └───────────────────────────────────────────────────────────────┘
- *           ↓ status COMPLETED
- * ┌─ Step 3: Hasil ───────────────────────────────────────────────┐
- * │  - Alignment summary                                          │
- * │  - Total mutasi                                               │
- * │  - Tabel mutasi: posisi, basa referensi, basa sampel          │
- * │  - Link ke riwayat task                                       │
- * └───────────────────────────────────────────────────────────────┘
+ * Input sekuens sampel mendukung DUA mode:
+ *   1. Teks Manual  — paste sekuens langsung di textarea
+ *   2. Upload FASTA — drag & drop / pilih file .fasta .fa .fna .ffn .fas .txt
+ *      → File diparsing di browser (tidak dikirim ke server sebagai file)
+ *      → Sekuens yang sudah diparsing dikirim sebagai string ke API
  *
- * Juga mendukung query param ?reference_id=xxx&ethnicity=xxx
- * yang dikirim dari EthnicSequenceDetailPage tombol "Mulai Analisis"
+ * Flow:
+ *   Form Input → POST → task_id → Polling 2.5s → Hasil / Error → Detail Lengkap
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -53,6 +39,10 @@ import {
   ChevronRight,
   Hash,
   HeartPulse,
+  Upload,
+  X,
+  FileCode2,
+  AlertTriangle,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -93,7 +83,332 @@ const STATUS_CFG = {
   },
 };
 
-// ─── Dropdown pilih reference sequence ────────────────────────────────────────
+const BASE_COLOR = {
+  A: "text-blue-500",
+  T: "text-green-500",
+  G: "text-red-500",
+  C: "text-yellow-500",
+  U: "text-purple-500",
+};
+
+// ─── Parser FASTA browser-side ────────────────────────────────────────────────
+function parseFasta(text) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const sequences = [];
+  let current = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith(">")) {
+      if (current) sequences.push(current);
+      current = { header: trimmed.slice(1), sequence: "" };
+    } else if (current) {
+      // Hapus whitespace & karakter non-FASTA
+      current.sequence += trimmed.replace(/\s/g, "").toUpperCase();
+    }
+  }
+  if (current) sequences.push(current);
+  return sequences;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+// ─── Upload FASTA Component ────────────────────────────────────────────────────
+function FastaUploadZone({ onSequenceParsed, onClear, parsedResult }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const ALLOWED_EXTS = [
+    ".fasta",
+    ".fa",
+    ".fna",
+    ".ffn",
+    ".fas",
+    ".faa",
+    ".txt",
+  ];
+
+  function isValidFile(file) {
+    const name = file.name.toLowerCase();
+    return ALLOWED_EXTS.some((ext) => name.endsWith(ext));
+  }
+
+  async function processFile(file) {
+    if (!isValidFile(file)) {
+      toast.error(`Format tidak didukung. Gunakan: ${ALLOWED_EXTS.join(", ")}`);
+      return;
+    }
+    // Batas ukuran 50 MB untuk parsing di browser
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error(
+        "File terlalu besar untuk di-parse di browser (maks 50 MB). Paste sekuens secara manual atau gunakan fitur Analisis FASTA di menu Analisis.",
+      );
+      return;
+    }
+
+    setIsParsing(true);
+    try {
+      const text = await file.text();
+      const sequences = parseFasta(text);
+
+      if (sequences.length === 0) {
+        toast.error(
+          "File tidak mengandung sekuens FASTA yang valid. Pastikan ada baris header (>)",
+        );
+        setIsParsing(false);
+        return;
+      }
+
+      if (sequences.length > 1) {
+        toast(
+          `File mengandung ${sequences.length} sekuens. Menggunakan sekuens pertama: "${sequences[0].header}"`,
+          { icon: "📋" },
+        );
+      }
+
+      onSequenceParsed({
+        fileName: file.name,
+        fileSize: file.size,
+        header: sequences[0].header,
+        sequence: sequences[0].sequence,
+        totalSeqs: sequences.length,
+      });
+      toast.success(
+        `Sekuens berhasil dibaca: ${sequences[0].sequence.length.toLocaleString()} karakter`,
+      );
+    } catch (err) {
+      toast.error("Gagal membaca file: " + err.message);
+    } finally {
+      setIsParsing(false);
+    }
+  }
+
+  const onDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  }, []);
+
+  const onDragOver = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const onDragLeave = useCallback(() => setIsDragging(false), []);
+
+  // Sudah ada hasil parsing → tampilkan preview
+  if (parsedResult) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-xl border border-success-500/25 bg-success-500/5 p-4 space-y-3"
+      >
+        {/* Header file */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-success-500/15 flex items-center justify-center flex-shrink-0">
+              <FileCode2 size={17} className="text-success-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[--text-primary] truncate">
+                {parsedResult.fileName}
+              </p>
+              <p className="text-xs text-[--text-tertiary]">
+                {formatBytes(parsedResult.fileSize)}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClear}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-[--text-tertiary]
+              hover:text-danger-500 hover:bg-danger-500/10 transition-colors flex-shrink-0"
+          >
+            <X size={13} />
+          </button>
+        </div>
+
+        {/* Info sekuens */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {[
+            {
+              label: "Panjang Sekuens",
+              value: `${parsedResult.sequence.length.toLocaleString()} bp`,
+            },
+            {
+              label: "Jumlah Sekuens",
+              value: `${parsedResult.totalSeqs} (pakai seq. 1)`,
+            },
+            {
+              label: "Karakter Unik",
+              value: [...new Set(parsedResult.sequence)].sort().join(" "),
+            },
+          ].map((item, i) => (
+            <div
+              key={i}
+              className="bg-[--bg-subtle] rounded-lg p-2.5 border border-[--border]"
+            >
+              <p className="text-[10px] text-[--text-tertiary] uppercase tracking-wider">
+                {item.label}
+              </p>
+              <p className="text-xs font-mono font-semibold text-[--text-primary] mt-0.5">
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Header FASTA */}
+        <div className="bg-[--bg-subtle] rounded-lg px-3 py-2 border border-[--border]">
+          <p className="text-[10px] text-[--text-tertiary] uppercase tracking-wider mb-1">
+            Header FASTA
+          </p>
+          <p className="text-xs font-mono text-primary-500 truncate">
+            &gt;{parsedResult.header}
+          </p>
+        </div>
+
+        {/* Preview 60 karakter pertama */}
+        <div className="bg-[--bg-subtle] rounded-lg px-3 py-2 border border-[--border]">
+          <p className="text-[10px] text-[--text-tertiary] uppercase tracking-wider mb-1">
+            Preview Sekuens (60 bp pertama)
+          </p>
+          <p className="text-xs font-mono text-[--text-primary] tracking-widest leading-relaxed break-all">
+            {parsedResult.sequence.slice(0, 60)}
+            {parsedResult.sequence.length > 60 && (
+              <span className="text-[--text-tertiary]">
+                …+{(parsedResult.sequence.length - 60).toLocaleString()} bp
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 text-xs text-success-600 dark:text-success-400">
+          <CheckCircle2 size={13} />
+          Siap dianalisis — klik "Mulai Analisis"
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Drop zone kosong
+  return (
+    <div
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onClick={() => fileInputRef.current?.click()}
+      className={clsx(
+        "relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3",
+        "cursor-pointer transition-all duration-200 select-none",
+        isDragging
+          ? "border-primary-500 bg-primary-500/8 scale-[1.01]"
+          : "border-[--border] bg-[--bg-subtle] hover:border-primary-400 hover:bg-primary-500/5",
+      )}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".fasta,.fa,.fna,.ffn,.fas,.faa,.txt"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) processFile(f);
+        }}
+      />
+
+      {isParsing ? (
+        <>
+          <Loader2 size={32} className="text-primary-500 animate-spin" />
+          <p className="text-sm font-medium text-primary-500">
+            Membaca file FASTA...
+          </p>
+        </>
+      ) : (
+        <>
+          <motion.div
+            animate={isDragging ? { scale: 1.1 } : { scale: 1 }}
+            className={clsx(
+              "w-14 h-14 rounded-2xl flex items-center justify-center transition-colors",
+              isDragging ? "bg-primary-500/20" : "bg-[--bg-muted]",
+            )}
+          >
+            <Upload
+              size={26}
+              className={
+                isDragging ? "text-primary-500" : "text-[--text-tertiary]"
+              }
+            />
+          </motion.div>
+
+          <div className="text-center space-y-1">
+            <p className="text-sm font-semibold text-[--text-primary]">
+              {isDragging ? "Lepaskan untuk upload" : "Drag & drop file FASTA"}
+            </p>
+            <p className="text-xs text-[--text-tertiary]">
+              atau{" "}
+              <span className="text-primary-500 underline underline-offset-2">
+                klik untuk pilih file
+              </span>
+            </p>
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-1.5 mt-1">
+            {[".fasta", ".fa", ".fna", ".ffn", ".fas"].map((ext) => (
+              <span
+                key={ext}
+                className="text-[10px] px-2 py-0.5 rounded-full bg-[--bg-muted] text-[--text-tertiary] font-mono border border-[--border]"
+              >
+                {ext}
+              </span>
+            ))}
+          </div>
+
+          <p className="text-[10px] text-[--text-tertiary]">
+            Maks. 50 MB · Sekuens pertama akan digunakan
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Toggle Input Mode ────────────────────────────────────────────────────────
+function InputModeToggle({ mode, onChange }) {
+  return (
+    <div className="flex items-center gap-1 p-1 rounded-xl bg-[--bg-subtle] border border-[--border] w-fit">
+      {[
+        { id: "text", label: "Teks Manual", icon: Hash },
+        { id: "fasta", label: "Upload FASTA", icon: Upload },
+      ].map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onChange(id)}
+          className={clsx(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+            mode === id
+              ? "bg-primary-500 text-white shadow-sm"
+              : "text-[--text-secondary] hover:text-[--text-primary] hover:bg-[--bg-muted]",
+          )}
+        >
+          <Icon size={12} />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Reference Sequence Dropdown ──────────────────────────────────────────────
 function ReferenceSelect({ value, onChange, error }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -103,7 +418,8 @@ function ReferenceSelect({ value, onChange, error }) {
   const { data: sequences = [], isLoading } = useQuery({
     queryKey: ["ethnic-sequences-ready"],
     queryFn: () => ethnicSequencesApi.listEthnicSequences({ limit: 1000 }),
-    select: (data) => data.filter((s) => s.status === "READY"), // hanya yang READY
+    select: (data) => data.filter((s) => s.status === "READY"),
+    staleTime: 5 * 60 * 1000,
   });
 
   useEffect(() => {
@@ -149,6 +465,8 @@ function ReferenceSelect({ value, onChange, error }) {
             <span className="text-xs text-[--text-tertiary]">
               {selected.data_type}
               {selected.original_filename && ` · ${selected.original_filename}`}
+              {selected.file_size_mb &&
+                ` · ${selected.file_size_mb.toFixed(1)} MB`}
             </span>
           </div>
         ) : (
@@ -174,7 +492,6 @@ function ReferenceSelect({ value, onChange, error }) {
             transition={{ duration: 0.15 }}
             className="absolute top-full left-0 right-0 mt-1.5 z-50 glass rounded-xl shadow-glass-md overflow-hidden"
           >
-            {/* Search */}
             <div className="p-2 border-b border-[--border]">
               <input
                 ref={searchRef}
@@ -187,7 +504,6 @@ function ReferenceSelect({ value, onChange, error }) {
                   placeholder:text-[--text-tertiary]"
               />
             </div>
-
             <div className="max-h-56 overflow-y-auto">
               {isLoading ? (
                 <div className="px-4 py-6 text-center text-sm text-[--text-tertiary]">
@@ -239,6 +555,7 @@ function ReferenceSelect({ value, onChange, error }) {
                         </span>
                         {seq.file_size_mb &&
                           ` · ${seq.file_size_mb.toFixed(1)} MB`}
+                        {seq.original_filename && ` · ${seq.original_filename}`}
                       </p>
                     </div>
                     {seq.id === value && (
@@ -261,10 +578,12 @@ function ReferenceSelect({ value, onChange, error }) {
 // ─── Status Tracker ───────────────────────────────────────────────────────────
 function StatusTracker({ status }) {
   const steps = ["PENDING", "PROCESSING", "COMPLETED"];
-  const currentIdx =
-    status === "FAILED"
-      ? steps.indexOf("PROCESSING") // berhenti di processing jika gagal
-      : steps.indexOf(status);
+  const currentIdx = status === "FAILED" ? 1 : steps.indexOf(status);
+  const labels = {
+    PENDING: "Antrian",
+    PROCESSING: "Analisis",
+    COMPLETED: "Selesai",
+  };
 
   return (
     <div className="flex items-center gap-0">
@@ -273,13 +592,7 @@ function StatusTracker({ status }) {
         const isDone = idx < currentIdx || status === "COMPLETED";
         const isCurrent =
           idx === currentIdx && !["COMPLETED", "FAILED"].includes(status);
-        const isPending = idx > currentIdx;
-
-        const labels = {
-          PENDING: "Antrian",
-          PROCESSING: "Analisis",
-          COMPLETED: "Selesai",
-        };
+        const isPending = idx > currentIdx && status !== "FAILED";
         const Icon = isFailed
           ? XCircle
           : isDone
@@ -290,12 +603,7 @@ function StatusTracker({ status }) {
 
         return (
           <div key={step} className="flex items-center flex-1 last:flex-none">
-            {/* Node */}
-            <div
-              className={clsx(
-                "flex flex-col items-center gap-1.5 flex-shrink-0",
-              )}
-            >
+            <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
               <div
                 className={clsx(
                   "w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-300",
@@ -330,8 +638,6 @@ function StatusTracker({ status }) {
                 {labels[step]}
               </span>
             </div>
-
-            {/* Connector — tidak untuk item terakhir */}
             {idx < steps.length - 1 && (
               <div
                 className={clsx(
@@ -363,37 +669,26 @@ function MutationTable({ mutations }) {
     );
   }
 
-  // Warna per basa
-  const BASE_COLOR = {
-    A: "text-blue-500",
-    T: "text-green-500",
-    G: "text-red-500",
-    C: "text-yellow-500",
-    U: "text-purple-500",
-  };
-
   return (
     <div className="table-wrapper">
       <table className="table">
         <thead>
           <tr>
-            <th className="w-16 text-center">#</th>
+            <th className="w-12 text-center">#</th>
             <th>Posisi</th>
-            <th>Basa Referensi</th>
-            <th>Basa Sampel</th>
+            <th>Basa Ref</th>
+            <th>Perubahan</th>
             <th>Tipe</th>
           </tr>
         </thead>
         <tbody>
           {mutations.map((mut, idx) => {
-            // Tentukan tipe mutasi sederhana
             const mutType =
               mut.reference_base === "-"
                 ? "Insertion"
                 : mut.sample_base === "-"
                   ? "Deletion"
                   : "Substitusi";
-
             return (
               <motion.tr
                 key={idx}
@@ -412,32 +707,28 @@ function MutationTable({ mutations }) {
                 <td>
                   <span
                     className={clsx(
-                      "font-mono text-base font-bold",
-                      BASE_COLOR[mut.reference_base] ||
-                        "text-[--text-secondary]",
+                      "font-mono text-base font-black",
+                      BASE_COLOR[mut.reference_base],
                     )}
                   >
                     {mut.reference_base}
                   </span>
                 </td>
                 <td>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 font-mono text-base font-black">
                     <span
-                      className={clsx(
-                        "font-mono text-base font-bold",
+                      className={
                         BASE_COLOR[mut.reference_base] ||
-                          "text-[--text-secondary]",
-                      )}
+                        "text-[--text-secondary]"
+                      }
                     >
                       {mut.reference_base}
                     </span>
-                    <ArrowRight size={12} className="text-[--text-tertiary]" />
+                    <ArrowRight size={11} className="text-[--text-tertiary]" />
                     <span
-                      className={clsx(
-                        "font-mono text-base font-bold",
-                        BASE_COLOR[mut.sample_base] ||
-                          "text-[--text-secondary]",
-                      )}
+                      className={
+                        BASE_COLOR[mut.sample_base] || "text-[--text-secondary]"
+                      }
                     >
                       {mut.sample_base}
                     </span>
@@ -464,21 +755,33 @@ function MutationTable({ mutations }) {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ═══════════════════════════════════════════════════════════════════════════════
 export default function AnalysisComparePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // Pre-fill dari query params (dikirim dari EthnicSequenceDetailPage)
   const prefilledRefId = searchParams.get("reference_id") || "";
   const prefilledEthnicity = searchParams.get("ethnicity") || "";
 
-  const [sample, setSample] = useState("");
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [inputMode, setInputMode] = useState("text"); // 'text' | 'fasta'
+  const [sampleText, setSampleText] = useState("");
+  const [parsedFasta, setParsedFasta] = useState(null); // { fileName, fileSize, header, sequence, totalSeqs }
   const [refId, setRefId] = useState(prefilledRefId);
   const [taskId, setTaskId] = useState(null);
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
+
+  // ── Derived: sekuens aktual yang akan dikirim ──────────────────────────────
+  const activeSample =
+    inputMode === "fasta"
+      ? parsedFasta?.sequence || ""
+      : sampleText.replace(/\s/g, "");
+
+  const sampleLen = activeSample.length;
 
   // ── Submit mutation ────────────────────────────────────────────────────────
   const startMutation = useMutation({
@@ -488,9 +791,7 @@ export default function AnalysisComparePage() {
       setSubmitted(true);
       toast.success("Analisis dimulai. Menunggu hasil...");
     },
-    onError: (err) => {
-      toast.error(err.message || "Gagal memulai analisis");
-    },
+    onError: (err) => toast.error(err.message || "Gagal memulai analisis"),
   });
 
   // ── Polling ────────────────────────────────────────────────────────────────
@@ -506,9 +807,14 @@ export default function AnalysisComparePage() {
   // ── Validasi ────────────────────────────────────────────────────────────────
   function validate() {
     const e = {};
-    if (!sample.trim()) e.sample = "Masukkan sekuens sampel";
-    else if (sample.replace(/\s/g, "").length < 10)
-      e.sample = "Sekuens minimal 10 karakter";
+    if (inputMode === "fasta") {
+      if (!parsedFasta) e.sample = "Upload file FASTA terlebih dahulu";
+      else if (sampleLen < 10)
+        e.sample = "Sekuens dari file terlalu pendek (min 10 bp)";
+    } else {
+      if (!sampleText.trim()) e.sample = "Masukkan sekuens sampel";
+      else if (sampleLen < 10) e.sample = "Sekuens minimal 10 karakter";
+    }
     if (!refId) e.refId = "Pilih sekuens referensi etnis";
     return e;
   }
@@ -524,24 +830,32 @@ export default function AnalysisComparePage() {
     setTaskId(null);
     setSubmitted(false);
     startMutation.mutate({
-      sample_sequence: sample.replace(/\s/g, ""),
+      sample_sequence: activeSample,
       reference_sequence_id: refId,
     });
   }
 
   function handleReset() {
-    setSample("");
+    setSampleText("");
+    setParsedFasta(null);
     setRefId(prefilledRefId);
     setTaskId(null);
     setSubmitted(false);
     setErrors({});
   }
 
-  const sampleLen = sample.replace(/\s/g, "").length;
+  function handleModeSwitch(mode) {
+    setInputMode(mode);
+    setErrors((p) => ({ ...p, sample: "" }));
+    // Bersihkan input mode sebelumnya
+    if (mode === "text") setParsedFasta(null);
+    if (mode === "fasta") setSampleText("");
+  }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5">
-      {/* ── Header ── */}
+    <div className="space-y-5 max-w-4xl">
+      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -567,12 +881,11 @@ export default function AnalysisComparePage() {
           onClick={() => navigate("/analysis/tasks")}
           className="btn btn-glass btn-sm gap-1.5"
         >
-          <ListTodo size={14} />
-          Riwayat Analisis
+          <ListTodo size={14} /> Riwayat Analisis
         </button>
       </motion.div>
 
-      {/* ── Form Input ── */}
+      {/* Form */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -584,12 +897,12 @@ export default function AnalysisComparePage() {
         </h2>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
-          {/* Referensi etnis */}
+          {/* Referensi */}
           <FormField
             label="Sekuens Referensi Etnis"
             required
             error={errors.refId}
-            helper="Pilih file FASTA referensi dari database etnis. Hanya yang berstatus 'Ready' yang bisa dipilih."
+            helper="Pilih file FASTA referensi dari database etnis (hanya status READY)."
           >
             <ReferenceSelect
               value={refId}
@@ -601,34 +914,101 @@ export default function AnalysisComparePage() {
             />
           </FormField>
 
-          {/* Sample sequence */}
-          <FormField
-            label="Sekuens Sampel"
-            required
-            error={errors.sample}
-            helper="Masukkan sekuens DNA/RNA sampel yang akan dibandingkan. Minimal 10 karakter."
-          >
-            <Textarea
-              placeholder="ATCGGCTATCGATCGATCGTAGCTAGCTAGCTA..."
-              value={sample}
-              onChange={(e) => {
-                setSample(e.target.value);
-                setErrors((p) => ({ ...p, sample: "" }));
-              }}
-              rows={7}
-              error={errors.sample}
-              className="font-mono text-xs tracking-wider leading-relaxed"
-            />
-            {sampleLen > 0 && (
-              <p className="text-xs text-[--text-tertiary] mt-1 flex items-center gap-1.5">
-                <Hash size={11} />
-                {sampleLen.toLocaleString()} karakter
+          {/* ── Input Mode Toggle ── */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="text-sm font-semibold text-[--text-primary]">
+                  Sekuens Sampel <span className="text-danger-500">*</span>
+                </p>
+                <p className="text-xs text-[--text-secondary] mt-0.5">
+                  {inputMode === "text"
+                    ? "Paste langsung sekuens DNA/RNA sampel Anda"
+                    : "Upload file FASTA — sekuens dibaca di browser, tidak perlu upload ke server"}
+                </p>
+              </div>
+              <InputModeToggle mode={inputMode} onChange={handleModeSwitch} />
+            </div>
+
+            {/* Error sample */}
+            {errors.sample && (
+              <p className="flex items-center gap-1.5 text-xs text-danger-500">
+                <AlertCircle size={12} /> {errors.sample}
               </p>
             )}
-          </FormField>
 
-          {/* Info box proses async */}
-          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-accent-500/8 border border-accent-500/15 text-xs text-accent-600 dark:text-accent-400">
+            {/* ── Mode: Teks Manual ── */}
+            <AnimatePresence mode="wait">
+              {inputMode === "text" && (
+                <motion.div
+                  key="text"
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -12 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <Textarea
+                    placeholder={`ATCGGCTATCGATCGATCGTAGCTAGCTAGCTA...\n\nTips: Pastikan hanya berisi karakter basa (ATCGURYMKSWHBVDN) tanpa spasi di tengah.`}
+                    value={sampleText}
+                    onChange={(e) => {
+                      setSampleText(e.target.value);
+                      setErrors((p) => ({ ...p, sample: "" }));
+                    }}
+                    rows={8}
+                    error={errors.sample}
+                    className="font-mono text-xs tracking-wider leading-relaxed"
+                  />
+                  {sampleText.length > 0 && (
+                    <div className="flex items-center gap-4 mt-1.5 text-xs text-[--text-tertiary]">
+                      <span className="flex items-center gap-1">
+                        <Hash size={11} /> {sampleLen.toLocaleString()} karakter
+                      </span>
+                      {sampleLen < 10 && sampleLen > 0 && (
+                        <span className="text-warning-500 flex items-center gap-1">
+                          <AlertTriangle size={11} /> Minimal 10 karakter
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {/* ── Mode: Upload FASTA ── */}
+              {inputMode === "fasta" && (
+                <motion.div
+                  key="fasta"
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 12 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <FastaUploadZone
+                    parsedResult={parsedFasta}
+                    onSequenceParsed={(result) => {
+                      setParsedFasta(result);
+                      setErrors((p) => ({ ...p, sample: "" }));
+                    }}
+                    onClear={() => {
+                      setParsedFasta(null);
+                      setErrors((p) => ({ ...p, sample: "" }));
+                    }}
+                  />
+                  {parsedFasta && sampleLen > 0 && (
+                    <p className="text-xs text-[--text-tertiary] mt-1.5 flex items-center gap-1.5">
+                      <Hash size={11} /> {sampleLen.toLocaleString()} bp akan
+                      dikirim ke analisis
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Info async */}
+          <div
+            className="flex items-start gap-2.5 p-3 rounded-lg bg-accent-500/8 border border-accent-500/15
+            text-xs text-accent-600 dark:text-accent-400"
+          >
             <Info size={14} className="flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold">
@@ -636,8 +1016,8 @@ export default function AnalysisComparePage() {
               </p>
               <p className="opacity-85 mt-0.5">
                 Analisis alignment bisa memakan waktu beberapa detik hingga
-                menit tergantung ukuran file referensi. Halaman ini akan
-                otomatis menampilkan hasil saat selesai.
+                menit tergantung ukuran file referensi. Halaman akan otomatis
+                menampilkan hasil saat selesai.
               </p>
             </div>
           </div>
@@ -675,7 +1055,7 @@ export default function AnalysisComparePage() {
         </form>
       </motion.div>
 
-      {/* ── Status & Result ── */}
+      {/* Status & Result */}
       <AnimatePresence>
         {taskId && task && (
           <motion.div
@@ -695,17 +1075,12 @@ export default function AnalysisComparePage() {
                   ID: {taskId.slice(0, 8)}...
                 </span>
               </div>
-
               <StatusTracker status={task.status} />
-
-              {/* Status message */}
               {task.status_message && (
                 <p className="text-xs text-[--text-secondary] text-center">
                   {task.status_message}
                 </p>
               )}
-
-              {/* Indeterminate progress bar saat polling */}
               {isPolling && (
                 <div className="h-1 rounded-full bg-[--bg-muted] overflow-hidden">
                   <div
@@ -716,7 +1091,7 @@ export default function AnalysisComparePage() {
               )}
             </div>
 
-            {/* Hasil COMPLETED */}
+            {/* COMPLETED */}
             {task.status === "COMPLETED" && (
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
@@ -724,7 +1099,7 @@ export default function AnalysisComparePage() {
                 transition={{ delay: 0.1 }}
                 className="space-y-4"
               >
-                {/* Summary cards */}
+                {/* KPI */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     {
@@ -784,11 +1159,11 @@ export default function AnalysisComparePage() {
                   ))}
                 </div>
 
-                {/* Alignment Summary */}
+                {/* Alignment summary */}
                 {task.alignment_summary && (
                   <div className="glass rounded-2xl p-5">
                     <h3 className="font-display text-sm font-bold text-[--text-primary] mb-3 flex items-center gap-2">
-                      <BarChart2 size={15} className="text-primary-500" />
+                      <BarChart2 size={15} className="text-primary-500" />{" "}
                       Ringkasan Alignment
                     </h3>
                     <div className="p-3.5 rounded-xl bg-[--bg-subtle] border border-[--border]">
@@ -815,7 +1190,7 @@ export default function AnalysisComparePage() {
                   <MutationTable mutations={task.mutations} />
                 </div>
 
-                {/* Link ke halaman detail diperkaya */}
+                {/* Lihat detail */}
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => navigate(`/analysis/tasks/${taskId}`)}

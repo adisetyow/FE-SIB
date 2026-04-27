@@ -86,6 +86,11 @@ export function AuthProvider({ children }) {
     logout,
   };
 
+  if (isLoading) {
+    // Kamu bisa me-return null agar layar kosong sebentar,
+    // atau mengembalikan animasi spinner loading
+    return null;
+  }
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
