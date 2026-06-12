@@ -143,6 +143,7 @@ export default function App() {
         <Route path="/mutations" element={<MutationListPage />} />
         <Route path="/mutations/new" element={<MutationFormPage />} />
         <Route path="/mutations/:id" element={<MutationDetailPage />} />
+        <Route path="/mutations/:id/edit" element={<MutationFormPage />} />
 
         {/* Diseases */}
         <Route path="diseases" element={<DiseaseListPage />} />
